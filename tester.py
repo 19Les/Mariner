@@ -17,12 +17,12 @@ import threading
 import traceback
 
 # ==========================================
-# ZMIENNE KONFIGURACYJNE (Będą ustawione przez Launcher)
+# ZMIENNE KONFIGURACYJNE
 # ==========================================
 USER_SETTINGS = {
-    'RES': '2K',  # FHD / 2K
-    'MODE': 'DNO',  # CZAS / DNO
-    'TIME': 20  # Sekundy
+    'RES': 'FHD',
+    'MODE': 'CZAS',
+    'TIME': 20
 }
 
 
@@ -38,7 +38,7 @@ def resource_path(relative_path):
 
 
 # ==========================================
-# ZASOBY
+# ZASOBY (Z DODANYM 'tension_reg')
 # ==========================================
 KONFIGURACJE = {
     'FHD': {
@@ -49,7 +49,8 @@ KONFIGURACJE = {
         'zero_img': resource_path('gotowy.png'),
         'zero_reg': (606, 1027, 47, 12),
         'dno_img': resource_path('dno.png'),
-        'dno_reg': (536, 1024, 30, 12)
+        'dno_reg': (536, 1024, 30, 12),
+        'tension_reg': (943, 1047, 10, 11)  # <--- Obszar paska napięcia
     },
     '2K': {
         'ryba_img': resource_path('indicator.png'),
@@ -59,7 +60,8 @@ KONFIGURACJE = {
         'zero_img': resource_path('ready.png'),
         'zero_reg': (896, 1387, 34, 9),
         'dno_img': resource_path('movement.png'),
-        'dno_reg': (856, 1384, 65, 12)
+        'dno_reg': (856, 1384, 65, 12),
+        'tension_reg': (933, 1407, 10, 11)  # <--- Obszar paska napięcia
     }
 }
 
@@ -105,7 +107,12 @@ def zapisz_statystyki():
         pass
 
 
-def pobierz_obraz_z_ekranu(region):
+def pobierz_obraz_z_ekranu(region, gray=True):
+    """
+    Pobiera wycinek ekranu.
+    gray=True -> zwraca obraz czarno-biały (do szukania wzorców)
+    gray=False -> zwraca obraz kolorowy BGR (do sprawdzania czerwonego paska)
+    """
     x, y, width, height = region
     hwnd = win32gui.GetDesktopWindow()
     hwndDC = win32gui.GetWindowDC(hwnd)
@@ -122,12 +129,16 @@ def pobierz_obraz_z_ekranu(region):
     saveDC.DeleteDC()
     mfcDC.DeleteDC()
     win32gui.ReleaseDC(hwnd, hwndDC)
-    return cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+
+    if gray:
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+    else:
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # Kolor dla paska napięcia
 
 
 def szukaj_wzorca(template_gray, region, prog=PROG_DOPASOWANIA):
     try:
-        screen_gray = pobierz_obraz_z_ekranu(region)
+        screen_gray = pobierz_obraz_z_ekranu(region, gray=True)
         if screen_gray.shape[0] < template_gray.shape[0] or screen_gray.shape[1] < template_gray.shape[1]:
             return False, 0.0
         res = cv2.matchTemplate(screen_gray, template_gray, cv2.TM_CCOEFF_NORMED)
@@ -135,6 +146,25 @@ def szukaj_wzorca(template_gray, region, prog=PROG_DOPASOWANIA):
         return (True, max_val) if max_val >= prog else (False, max_val)
     except:
         return False, 0.0
+
+
+def czy_jest_czerwone(region):
+    """ Sprawdza czy w danym regionie dominuje kolor czerwony (napięcie) """
+    try:
+        img_bgr = pobierz_obraz_z_ekranu(region, gray=False)
+        # Obliczamy średni kolor
+        avg_color_per_row = np.average(img_bgr, axis=0)
+        avg_color = np.average(avg_color_per_row, axis=0)
+
+        # BGR: [0]=Blue, [1]=Green, [2]=Red
+        blue, green, red = avg_color
+
+        # Warunek czerwonego paska: Dużo czerwonego, mało niebieskiego i zielonego
+        if red > 140 and green < 100 and blue < 100:
+            return True
+        return False
+    except:
+        return False
 
 
 def resetuj_klawisze():
@@ -178,37 +208,34 @@ def inteligentne_czekanie(sekundy):
 
 
 # ==========================================
-# LAUNCHER (OKNO KONFIGURACJI)
+# LAUNCHER
 # ==========================================
 def show_launcher():
     launcher = tk.Tk()
     launcher.title("Konfiguracja")
     launcher.geometry("300x400")
     launcher.configure(bg='#1a1b26')
+    launcher.attributes('-topmost', True)
+    launcher.lift()
 
-    # Stylizacja
     style = ttk.Style()
     style.theme_use('clam')
     style.configure('TRadiobutton', background='#1a1b26', foreground='white', font=('Segoe UI', 10))
     style.configure('TLabel', background='#1a1b26', foreground='white', font=('Segoe UI', 10))
 
-    # Zmienne
     var_res = tk.StringVar(value='2K')
     var_mode = tk.StringVar(value='CZAS')
     var_time = tk.StringVar(value='20')
 
-    # UI
     tk.Label(launcher, text="MARINER SETUP", font=("Segoe UI", 16, "bold"), bg='#1a1b26', fg='#7aa2f7').pack(pady=15)
 
-    # Rozdzielczość
     tk.Label(launcher, text="Rozdzielczość:", bg='#1a1b26', fg='#a9b1d6', font=("Segoe UI", 9, "bold")).pack(anchor='w',
                                                                                                              padx=20)
     ttk.Radiobutton(launcher, text="FHD (1920x1080)", variable=var_res, value='FHD').pack(anchor='w', padx=30)
     ttk.Radiobutton(launcher, text="2K (2560x1440)", variable=var_res, value='2K').pack(anchor='w', padx=30)
 
-    tk.Label(launcher, text="", bg='#1a1b26').pack()  # Odstęp
+    tk.Label(launcher, text="", bg='#1a1b26').pack()
 
-    # Tryb
     tk.Label(launcher, text="Tryb opadania:", bg='#1a1b26', fg='#a9b1d6', font=("Segoe UI", 9, "bold")).pack(anchor='w',
                                                                                                              padx=20)
     ttk.Radiobutton(launcher, text="Czasowy (Stały)", variable=var_mode, value='CZAS').pack(anchor='w', padx=30)
@@ -218,10 +245,8 @@ def show_launcher():
     tk.Label(frame_time, text="Sekundy:", bg='#1a1b26', fg='#565f89', font=("Segoe UI", 9)).pack(side='left')
     tk.Entry(frame_time, textvariable=var_time, width=5, bg='#24283b', fg='white', insertbackground='white').pack(
         side='left', padx=5)
-
     ttk.Radiobutton(launcher, text="Auto-Dno (Obraz)", variable=var_mode, value='DNO').pack(anchor='w', padx=30)
 
-    # Przycisk Start
     def on_start():
         USER_SETTINGS['RES'] = var_res.get()
         USER_SETTINGS['MODE'] = var_mode.get()
@@ -233,47 +258,41 @@ def show_launcher():
 
     tk.Button(launcher, text="URUCHOM", command=on_start, bg='#00e676', fg='black', font=("Segoe UI", 10, "bold"),
               width=15).pack(pady=25)
-
     launcher.mainloop()
 
 
 # ==========================================
-# WĄTEK BOTA
+# GŁÓWNA LOGIKA BOTA
 # ==========================================
 def bot_logic():
     global running, SESSION_COUNTER, TOTAL_COUNTER, ACTIVE_CONFIG
 
     try:
-        # Inicjalizacja z ustawień Launchera
         active_res = USER_SETTINGS['RES']
         ACTIVE_CONFIG = KONFIGURACJE[active_res]
 
-        # Sprawdzenie obrazków
-        if not os.path.isfile(ACTIVE_CONFIG['ryba_img']):
-            set_status(f"BŁĄD: BRAK {ACTIVE_CONFIG['ryba_img']}")
-            return
+        # Sprawdzanie zasobów
+        for plik in ['ryba_img']:
+            if not os.path.isfile(ACTIVE_CONFIG[plik]):
+                set_status(f"BRAK PLIKU: {ACTIVE_CONFIG[plik]}")
+                return
 
         template_ryba = cv2.imread(ACTIVE_CONFIG['ryba_img'], 0)
         template_spacja = cv2.imread(ACTIVE_CONFIG['spacja_img'], 0) if os.path.isfile(
             ACTIVE_CONFIG['spacja_img']) else None
         template_zero = cv2.imread(ACTIVE_CONFIG['zero_img'], 0) if os.path.isfile(ACTIVE_CONFIG['zero_img']) else None
 
-        # Konfiguracja trybu
         tryb_dno = (USER_SETTINGS['MODE'] == 'DNO')
         czas_opadu = USER_SETTINGS['TIME']
         template_dno = None
         if tryb_dno and os.path.isfile(ACTIVE_CONFIG['dno_img']):
             template_dno = cv2.imread(ACTIVE_CONFIG['dno_img'], 0)
-        elif tryb_dno:
-            set_status("BŁĄD: Brak dno.png!")
-            time.sleep(2)
 
         wymagany_rzut = True
         set_status(f"GOTOWY ({KLAWISZ_START})")
         keyboard.add_hotkey(KLAWISZ_KONIEC, wyjscie_awaryjne)
 
         while True:
-            # Obsługa przycisków
             if keyboard.is_pressed(KLAWISZ_START):
                 resetuj_klawisze()
                 running = not running
@@ -343,13 +362,16 @@ def bot_logic():
 
                 if not running: continue
 
-                # --- HOLOWANIE ---
+                # --- HOLOWANIE Z KONTROLĄ NAPIĘCIA ---
                 if ryba_znaleziona:
                     set_status(">>> HOLOWANIE <<<")
                     winsound.Beep(1000, 200)
+
+                    # Stan początkowy klawiszy (trzymamy)
                     pyautogui.mouseDown(button='right')
-                    pyautogui.keyDown('shift')
-                    pyautogui.mouseDown(button='left')
+
+                    # Zmienne do pulsowania
+                    trzymamy_zwijanie = False
 
                     start_holu = time.time()
                     sukces = False
@@ -360,6 +382,7 @@ def bot_logic():
                         if not running: break
                         if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
 
+                        # 1. Sprawdź czy ryba jest
                         if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                             licznik_znikniec += 1
                         else:
@@ -369,9 +392,29 @@ def bot_logic():
                             spadla = True;
                             break
 
-                        if template_spacja and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[0]:
+                        # 2. Sprawdź sukces (Spacja)
+                        if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[
+                            0]:
                             sukces = True;
                             break
+
+                        # 3. KONTROLA NAPIĘCIA (CZERWONY PASEK)
+                        jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
+
+                        if jest_czerwono:
+                            set_status("NAPIEcie! (STOP)")
+                            if trzymamy_zwijanie:
+                                pyautogui.keyUp('shift')
+                                pyautogui.mouseUp(button='left')
+                                trzymamy_zwijanie = False
+                        else:
+                            # Jest bezpiecznie -> Zwijamy
+                            if not trzymamy_zwijanie:
+                                set_status(">>> HOLOWANIE <<<")
+                                pyautogui.keyDown('shift')
+                                pyautogui.mouseDown(button='left')
+                                trzymamy_zwijanie = True
+
                         time.sleep(0.05)
 
                     resetuj_klawisze()
@@ -405,7 +448,8 @@ def bot_logic():
                                 nowe_branie = True
                                 break
 
-                            if template_zero and szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
+                            if template_zero is not None and \
+                                    szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                                 break
                             time.sleep(0.05)
 
@@ -414,7 +458,7 @@ def bot_logic():
                         time.sleep(1.5)
                         wymagany_rzut = True
             else:
-                time.sleep(0.1)  # ODPOCZYNEK CPU
+                time.sleep(0.1)
 
     except Exception as e:
         print(f"BŁĄD WĄTKU: {e}")
@@ -422,7 +466,7 @@ def bot_logic():
 
 
 # ==========================================
-# GUI GŁÓWNE
+# GUI
 # ==========================================
 def main_gui():
     global root, lbl_counter, lbl_status
@@ -431,10 +475,10 @@ def main_gui():
     root.geometry("460x160")
     root.configure(bg='#1a1b26')
     root.attributes('-topmost', True)
+    root.lift()
 
     bg_color, accent_color, text_color = '#1a1b26', '#7aa2f7', '#c0caf5'
 
-    # Etykiety informacyjne
     res_info = USER_SETTINGS['RES']
     mode_info = "Auto-Dno" if USER_SETTINGS['MODE'] == 'DNO' else f"Czas ({USER_SETTINGS['TIME']}s)"
 
@@ -475,6 +519,8 @@ def main_gui():
                 color = '#9ece6a'
             elif "SPADŁA" in st:
                 color = '#e0af68'
+            elif "NAPIECIE" in st:
+                color = '#ff0000'  # Czerwony dla napięcia
             lbl_status.config(fg=color)
         except:
             pass
@@ -487,17 +533,10 @@ def main_gui():
 if __name__ == "__main__":
     try:
         wczytaj_statystyki()
-
-        # 1. Pokaż Launcher (Blokuje aż do kliknięcia Start)
         show_launcher()
-
-        # 2. Start Wątku Bota
         bot_thread = threading.Thread(target=bot_logic, daemon=True)
         bot_thread.start()
-
-        # 3. Start Głównego GUI
         main_gui()
-
     except Exception as e:
         print(f"BŁĄD: {e}")
         traceback.print_exc()

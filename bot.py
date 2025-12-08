@@ -339,9 +339,9 @@ def bot_logic():
                 if ryba_znaleziona:
                     set_status(">>> HOLOWANIE <<<")
                     winsound.Beep(1000, 200)
-                    pyautogui.mouseDown(button='right')
-                    pyautogui.keyDown('shift')
                     pyautogui.mouseDown(button='left')
+                    pyautogui.keyDown('shift')
+                    pyautogui.mouseDown(button='right')
 
                     start_holu = time.time()
                     sukces = False
