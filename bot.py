@@ -20,8 +20,8 @@ import traceback
 # ZMIENNE KONFIGURACYJNE (Będą ustawione przez Launcher)
 # ==========================================
 USER_SETTINGS = {
-    'RES': '2K',  # FHD / 2K
-    'MODE': 'DNO',  # CZAS / DNO
+    'RES': 'FHD',  # FHD / 2K
+    'MODE': 'CZAS',  # CZAS / DNO
     'TIME': 20  # Sekundy
 }
 
@@ -185,30 +185,27 @@ def show_launcher():
     launcher.title("Konfiguracja")
     launcher.geometry("300x400")
     launcher.configure(bg='#1a1b26')
+    launcher.attributes('-topmost', True)
+    launcher.lift()
 
-    # Stylizacja
     style = ttk.Style()
     style.theme_use('clam')
     style.configure('TRadiobutton', background='#1a1b26', foreground='white', font=('Segoe UI', 10))
     style.configure('TLabel', background='#1a1b26', foreground='white', font=('Segoe UI', 10))
 
-    # Zmienne
-    var_res = tk.StringVar(value='2K')
+    var_res = tk.StringVar(value='FHD')
     var_mode = tk.StringVar(value='CZAS')
     var_time = tk.StringVar(value='20')
 
-    # UI
     tk.Label(launcher, text="MARINER SETUP", font=("Segoe UI", 16, "bold"), bg='#1a1b26', fg='#7aa2f7').pack(pady=15)
 
-    # Rozdzielczość
     tk.Label(launcher, text="Rozdzielczość:", bg='#1a1b26', fg='#a9b1d6', font=("Segoe UI", 9, "bold")).pack(anchor='w',
                                                                                                              padx=20)
     ttk.Radiobutton(launcher, text="FHD (1920x1080)", variable=var_res, value='FHD').pack(anchor='w', padx=30)
     ttk.Radiobutton(launcher, text="2K (2560x1440)", variable=var_res, value='2K').pack(anchor='w', padx=30)
 
-    tk.Label(launcher, text="", bg='#1a1b26').pack()  # Odstęp
+    tk.Label(launcher, text="", bg='#1a1b26').pack()
 
-    # Tryb
     tk.Label(launcher, text="Tryb opadania:", bg='#1a1b26', fg='#a9b1d6', font=("Segoe UI", 9, "bold")).pack(anchor='w',
                                                                                                              padx=20)
     ttk.Radiobutton(launcher, text="Czasowy (Stały)", variable=var_mode, value='CZAS').pack(anchor='w', padx=30)
@@ -221,7 +218,6 @@ def show_launcher():
 
     ttk.Radiobutton(launcher, text="Auto-Dno (Obraz)", variable=var_mode, value='DNO').pack(anchor='w', padx=30)
 
-    # Przycisk Start
     def on_start():
         USER_SETTINGS['RES'] = var_res.get()
         USER_SETTINGS['MODE'] = var_mode.get()
@@ -244,11 +240,9 @@ def bot_logic():
     global running, SESSION_COUNTER, TOTAL_COUNTER, ACTIVE_CONFIG
 
     try:
-        # Inicjalizacja z ustawień Launchera
         active_res = USER_SETTINGS['RES']
         ACTIVE_CONFIG = KONFIGURACJE[active_res]
 
-        # Sprawdzenie obrazków
         if not os.path.isfile(ACTIVE_CONFIG['ryba_img']):
             set_status(f"BŁĄD: BRAK {ACTIVE_CONFIG['ryba_img']}")
             return
@@ -258,7 +252,6 @@ def bot_logic():
             ACTIVE_CONFIG['spacja_img']) else None
         template_zero = cv2.imread(ACTIVE_CONFIG['zero_img'], 0) if os.path.isfile(ACTIVE_CONFIG['zero_img']) else None
 
-        # Konfiguracja trybu
         tryb_dno = (USER_SETTINGS['MODE'] == 'DNO')
         czas_opadu = USER_SETTINGS['TIME']
         template_dno = None
@@ -273,7 +266,6 @@ def bot_logic():
         keyboard.add_hotkey(KLAWISZ_KONIEC, wyjscie_awaryjne)
 
         while True:
-            # Obsługa przycisków
             if keyboard.is_pressed(KLAWISZ_START):
                 resetuj_klawisze()
                 running = not running
@@ -369,7 +361,9 @@ def bot_logic():
                             spadla = True;
                             break
 
-                        if template_spacja and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[0]:
+                        # !!! TUTAJ BYŁ BŁĄD - POPRAWIONE !!!
+                        if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[
+                            0]:
                             sukces = True;
                             break
                         time.sleep(0.05)
@@ -405,7 +399,9 @@ def bot_logic():
                                 nowe_branie = True
                                 break
 
-                            if template_zero and szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
+                            # !!! TUTAJ BYŁ BŁĄD - POPRAWIONE !!!
+                            if template_zero is not None and \
+                                    szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                                 break
                             time.sleep(0.05)
 
@@ -414,7 +410,7 @@ def bot_logic():
                         time.sleep(1.5)
                         wymagany_rzut = True
             else:
-                time.sleep(0.1)  # ODPOCZYNEK CPU
+                time.sleep(0.1)
 
     except Exception as e:
         print(f"BŁĄD WĄTKU: {e}")
@@ -431,10 +427,10 @@ def main_gui():
     root.geometry("460x160")
     root.configure(bg='#1a1b26')
     root.attributes('-topmost', True)
+    root.lift()
 
     bg_color, accent_color, text_color = '#1a1b26', '#7aa2f7', '#c0caf5'
 
-    # Etykiety informacyjne
     res_info = USER_SETTINGS['RES']
     mode_info = "Auto-Dno" if USER_SETTINGS['MODE'] == 'DNO' else f"Czas ({USER_SETTINGS['TIME']}s)"
 
@@ -487,15 +483,9 @@ def main_gui():
 if __name__ == "__main__":
     try:
         wczytaj_statystyki()
-
-        # 1. Pokaż Launcher (Blokuje aż do kliknięcia Start)
         show_launcher()
-
-        # 2. Start Wątku Bota
         bot_thread = threading.Thread(target=bot_logic, daemon=True)
         bot_thread.start()
-
-        # 3. Start Głównego GUI
         main_gui()
 
     except Exception as e:
