@@ -3,8 +3,8 @@ name: Build Mariner EXE
 on:
   push:
     tags:
-      - 'v*' # Uruchomi się automatycznie, gdy stworzysz tag np. v1.0
-  workflow_dispatch: # Pozwala też uruchomić ręcznie przyciskiem
+      - 'v*' # Uruchomi się przy tagach np. v1.0
+  workflow_dispatch: # Pozwala na ręczne uruchomienie
 
 jobs:
   build:
@@ -26,7 +26,7 @@ jobs:
         pip install pyinstaller
 
     - name: Budowanie pliku EXE (PyInstaller)
-      # Tutaj wymieniamy wszystkie obrazki, żeby zostały "wypieczone" w środku EXE
+      # Upewnij się, że nazwa pliku .py to main.py (jeśli inna, zmień na końcu)
       run: |
         pyinstaller --noconsole --onefile --name "Mariner" `
           --add-data "ind2.png;." `
@@ -39,6 +39,14 @@ jobs:
           --add-data "movement.png;." `
           bot.py
 
+    # KROK 1: Zapisz plik jako Artifact (widoczny przy ręcznym uruchomieniu)
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Mariner-EXE
+        path: dist/Mariner.exe
+
+    # KROK 2: Utwórz Release (tylko gdy stworzysz Tag v...)
     - name: Utworzenie Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
