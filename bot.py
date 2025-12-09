@@ -17,7 +17,7 @@ import threading
 import traceback
 
 # ==========================================
-# ZMIENNE KONFIGURACYJNE
+# ZMIENNE GLOBALNE I KONFIGURACJA
 # ==========================================
 USER_SETTINGS = {
     'RES': 'FHD',
@@ -26,9 +26,7 @@ USER_SETTINGS = {
 }
 
 
-# ==========================================
-# NARZĘDZIA SYSTEMOWE
-# ==========================================
+# Ścieżka do zasobów (dla EXE i skryptu)
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -37,9 +35,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-# ==========================================
-# ZASOBY (Z DODANYM 'tension_reg')
-# ==========================================
+# Baza współrzędnych dla różnych rozdzielczości
 KONFIGURACJE = {
     'FHD': {
         'ryba_img': resource_path('ind2.png'),
@@ -50,7 +46,7 @@ KONFIGURACJE = {
         'zero_reg': (606, 1027, 47, 12),
         'dno_img': resource_path('dno.png'),
         'dno_reg': (536, 1024, 30, 12),
-        'tension_reg': (943, 1047, 10, 11)  # <--- Obszar paska napięcia
+        'tension_reg': (943, 1047, 10, 11)  # Obszar paska napięcia (FHD)
     },
     '2K': {
         'ryba_img': resource_path('indicator.png'),
@@ -61,32 +57,37 @@ KONFIGURACJE = {
         'zero_reg': (896, 1387, 34, 9),
         'dno_img': resource_path('movement.png'),
         'dno_reg': (856, 1384, 65, 12),
-        'tension_reg': (933, 1407, 10, 11)  # <--- Obszar paska napięcia
+        'tension_reg': (933, 1407, 10, 11)  # Obszar paska napięcia (2K)
     }
 }
 
 PLIK_STATYSTYK = 'stats.json'
+
+# Klawisze sterujące
 KLAWISZ_START = 'F8'
 KLAWISZ_KONIEC = 'F12'
 
+# Parametry logiczne
 PROG_DOPASOWANIA = 0.65
 MAX_CZAS_HOLU = 900
 TIMEOUT_OPADANIA = 600
 MOC_RZUTU_CZAS = 0.1
 
+# Zmienne stanu
 running = False
 TOTAL_COUNTER = 0
 SESSION_COUNTER = 0
 BOT_STATUS = "GOTOWY"
 ACTIVE_CONFIG = {}
 
+# GUI references
 root = None
 lbl_counter = None
 lbl_status = None
 
 
 # ==========================================
-# FUNKCJE POMOCNICZE
+# SYSTEM PLIKÓW I STATYSTYKI
 # ==========================================
 def wczytaj_statystyki():
     global TOTAL_COUNTER
@@ -107,6 +108,9 @@ def zapisz_statystyki():
         pass
 
 
+# ==========================================
+# ANALIZA OBRAZU
+# ==========================================
 def pobierz_obraz_z_ekranu(region, gray=True):
     """
     Pobiera wycinek ekranu.
@@ -122,9 +126,11 @@ def pobierz_obraz_z_ekranu(region, gray=True):
     saveBitMap.CreateCompatibleBitmap(mfcDC, width, height)
     saveDC.SelectObject(saveBitMap)
     saveDC.BitBlt((0, 0), (width, height), mfcDC, (x, y), win32con.SRCCOPY)
+
     bmpstr = saveBitMap.GetBitmapBits(True)
     img = np.frombuffer(bmpstr, dtype='uint8')
     img.shape = (height, width, 4)
+
     win32gui.DeleteObject(saveBitMap.GetHandle())
     saveDC.DeleteDC()
     mfcDC.DeleteDC()
@@ -133,7 +139,7 @@ def pobierz_obraz_z_ekranu(region, gray=True):
     if gray:
         return cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
     else:
-        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # Kolor dla paska napięcia
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # Zwraca BGR
 
 
 def szukaj_wzorca(template_gray, region, prog=PROG_DOPASOWANIA):
@@ -156,7 +162,7 @@ def czy_jest_czerwone(region):
         avg_color_per_row = np.average(img_bgr, axis=0)
         avg_color = np.average(avg_color_per_row, axis=0)
 
-        # BGR: [0]=Blue, [1]=Green, [2]=Red
+        # Format OpenCV to BGR: [0]=Blue, [1]=Green, [2]=Red
         blue, green, red = avg_color
 
         # Warunek czerwonego paska: Dużo czerwonego, mało niebieskiego i zielonego
@@ -167,6 +173,9 @@ def czy_jest_czerwone(region):
         return False
 
 
+# ==========================================
+# STEROWANIE
+# ==========================================
 def resetuj_klawisze():
     pyautogui.mouseUp(button='right')
     pyautogui.mouseUp(button='left')
@@ -208,7 +217,7 @@ def inteligentne_czekanie(sekundy):
 
 
 # ==========================================
-# LAUNCHER
+# LAUNCHER (KONFIGURACJA NA STARCIE)
 # ==========================================
 def show_launcher():
     launcher = tk.Tk()
@@ -245,6 +254,7 @@ def show_launcher():
     tk.Label(frame_time, text="Sekundy:", bg='#1a1b26', fg='#565f89', font=("Segoe UI", 9)).pack(side='left')
     tk.Entry(frame_time, textvariable=var_time, width=5, bg='#24283b', fg='white', insertbackground='white').pack(
         side='left', padx=5)
+
     ttk.Radiobutton(launcher, text="Auto-Dno (Obraz)", variable=var_mode, value='DNO').pack(anchor='w', padx=30)
 
     def on_start():
@@ -262,7 +272,7 @@ def show_launcher():
 
 
 # ==========================================
-# GŁÓWNA LOGIKA BOTA
+# GŁÓWNA PĘTLA LOGIKI
 # ==========================================
 def bot_logic():
     global running, SESSION_COUNTER, TOTAL_COUNTER, ACTIVE_CONFIG
@@ -293,6 +303,7 @@ def bot_logic():
         keyboard.add_hotkey(KLAWISZ_KONIEC, wyjscie_awaryjne)
 
         while True:
+            # Obsługa Start/Pauza w pętli
             if keyboard.is_pressed(KLAWISZ_START):
                 resetuj_klawisze()
                 running = not running
@@ -306,7 +317,9 @@ def bot_logic():
                 time.sleep(0.5)
 
             if running:
-                # --- RZUT ---
+                # ---------------------
+                # ETAP 1: RZUT
+                # ---------------------
                 if wymagany_rzut:
                     set_status("RZUT")
                     pyautogui.keyUp('shift')
@@ -323,6 +336,7 @@ def bot_logic():
                         if not running: break
                         if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
 
+                        # Sprawdź branie w locie
                         if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                             set_status("BRANIE (OPAD)!")
                             przerwano_opad = True
@@ -343,7 +357,9 @@ def bot_logic():
                         pyautogui.mouseUp(button='left')
                         wymagany_rzut = False
 
-                # --- JIGOWANIE ---
+                # ---------------------
+                # ETAP 2: JIGOWANIE
+                # ---------------------
                 set_status("JIGOWANIE")
                 pyautogui.mouseDown(button='right')
                 if not inteligentne_czekanie(random.uniform(0.5, 0.8)):
@@ -362,17 +378,17 @@ def bot_logic():
 
                 if not running: continue
 
-                # --- HOLOWANIE Z KONTROLĄ NAPIĘCIA ---
+                # ---------------------
+                # ETAP 3: HOLOWANIE (Z KONTROLĄ NAPIĘCIA)
+                # ---------------------
                 if ryba_znaleziona:
                     set_status(">>> HOLOWANIE <<<")
                     winsound.Beep(1000, 200)
 
-                    # Stan początkowy klawiszy (trzymamy)
+                    # Trzymamy wędkę w górze
                     pyautogui.mouseDown(button='right')
 
-                    # Zmienne do pulsowania
                     trzymamy_zwijanie = False
-
                     start_holu = time.time()
                     sukces = False
                     spadla = False
@@ -382,33 +398,33 @@ def bot_logic():
                         if not running: break
                         if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
 
-                        # 1. Sprawdź czy ryba jest
+                        # A. Sprawdź czy ryba siedzi
                         if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                             licznik_znikniec += 1
                         else:
                             licznik_znikniec = 0
 
-                        if licznik_znikniec > 12:
+                        if licznik_znikniec > 12:  # ok 0.6s bez ikony
                             spadla = True;
                             break
 
-                        # 2. Sprawdź sukces (Spacja)
+                        # B. Sprawdź czy wyłowiona (Spacja)
                         if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[
                             0]:
                             sukces = True;
                             break
 
-                        # 3. KONTROLA NAPIĘCIA (CZERWONY PASEK)
+                        # C. KONTROLA NAPIĘCIA (CZERWONY PASEK)
                         jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
 
                         if jest_czerwono:
-                            set_status("NAPIEcie! (STOP)")
+                            set_status("NAPIECIE! (STOP)")
                             if trzymamy_zwijanie:
                                 pyautogui.keyUp('shift')
                                 pyautogui.mouseUp(button='left')
                                 trzymamy_zwijanie = False
                         else:
-                            # Jest bezpiecznie -> Zwijamy
+                            # Bezpiecznie -> zwijamy
                             if not trzymamy_zwijanie:
                                 set_status(">>> HOLOWANIE <<<")
                                 pyautogui.keyDown('shift')
@@ -431,6 +447,7 @@ def bot_logic():
 
                     elif spadla and running:
                         set_status("SPADŁA - ZWIJAM")
+                        # Przejście do szybkiego zwijania
                         pyautogui.mouseUp(button='right')
                         pyautogui.keyDown('shift')
                         pyautogui.mouseDown(button='left')
@@ -442,18 +459,21 @@ def bot_logic():
                             if not running: break
                             if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
 
+                            # Czy nowa ryba zaatakowała pusty zestaw?
                             if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                                 set_status("PONOWNY ATAK!")
                                 ryba_znaleziona = True
                                 nowe_branie = True
                                 break
 
+                            # Czy zwinięto do końca?
                             if template_zero is not None and \
                                     szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                                 break
                             time.sleep(0.05)
 
-                        if nowe_branie: continue
+                        if nowe_branie: continue  # Wraca do głównej pętli, która wykryje rybę
+
                         resetuj_klawisze()
                         time.sleep(1.5)
                         wymagany_rzut = True
@@ -466,7 +486,7 @@ def bot_logic():
 
 
 # ==========================================
-# GUI
+# GŁÓWNE OKNO GUI
 # ==========================================
 def main_gui():
     global root, lbl_counter, lbl_status
@@ -477,7 +497,9 @@ def main_gui():
     root.attributes('-topmost', True)
     root.lift()
 
-    bg_color, accent_color, text_color = '#1a1b26', '#7aa2f7', '#c0caf5'
+    bg_color = '#1a1b26'
+    accent_color = '#7aa2f7'
+    text_color = '#c0caf5'
 
     res_info = USER_SETTINGS['RES']
     mode_info = "Auto-Dno" if USER_SETTINGS['MODE'] == 'DNO' else f"Czas ({USER_SETTINGS['TIME']}s)"
@@ -485,6 +507,7 @@ def main_gui():
     main_frame = tk.Frame(root, bg=bg_color)
     main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
+    # Lewa strona
     left_frame = tk.Frame(main_frame, bg=bg_color)
     left_frame.pack(side='left', fill='both', expand=True)
     tk.Label(left_frame, text="⚓ MARINER", font=("Segoe UI", 16, "bold"), bg=bg_color, fg=accent_color).pack(anchor='w')
@@ -493,9 +516,11 @@ def main_gui():
     lbl_counter = tk.Label(left_frame, text="Sesja: 0 | Razem: 0", font=("Segoe UI", 11), bg=bg_color, fg=text_color)
     lbl_counter.pack(anchor='w', pady=(5, 0))
 
+    # Prawa strona
     right_frame = tk.Frame(main_frame, bg=bg_color)
     right_frame.pack(side='right', fill='both', padx=(20, 0))
-    tk.Frame(main_frame, bg='#414868', width=2).pack(side='right', fill='y', padx=5)
+    tk.Frame(main_frame, bg='#414868', width=2).pack(side='right', fill='y', padx=5)  # Separator
+
     tk.Label(right_frame, text="STEROWANIE", font=("Segoe UI", 9, "bold"), bg=bg_color, fg='#565f89').pack(anchor='e')
     tk.Label(right_frame, text=f"Start / Pauza: [{KLAWISZ_START}]", font=("Segoe UI", 9), bg=bg_color,
              fg=text_color).pack(anchor='e')
@@ -509,8 +534,10 @@ def main_gui():
         try:
             lbl_counter.config(text=f"Sesja: {SESSION_COUNTER}  |  Razem: {TOTAL_COUNTER}")
             lbl_status.config(text=BOT_STATUS)
+
+            # Kolorowanie statusu
             st = BOT_STATUS.upper()
-            color = '#7dcfff'
+            color = '#7dcfff'  # Default blue
             if "PAUZA" in st:
                 color = '#f7768e'
             elif "HOL" in st:
@@ -520,7 +547,8 @@ def main_gui():
             elif "SPADŁA" in st:
                 color = '#e0af68'
             elif "NAPIECIE" in st:
-                color = '#ff0000'  # Czerwony dla napięcia
+                color = '#ff0000'
+
             lbl_status.config(fg=color)
         except:
             pass
@@ -533,9 +561,13 @@ def main_gui():
 if __name__ == "__main__":
     try:
         wczytaj_statystyki()
-        show_launcher()
+        show_launcher()  # Najpierw wybór ustawień
+
+        # Uruchomienie wątku bota
         bot_thread = threading.Thread(target=bot_logic, daemon=True)
         bot_thread.start()
+
+        # Główne okno
         main_gui()
     except Exception as e:
         print(f"BŁĄD: {e}")

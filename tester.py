@@ -17,7 +17,7 @@ import threading
 import traceback
 
 # ==========================================
-# ZMIENNE KONFIGURACYJNE
+# KONFIGURACJA GLOBALNA
 # ==========================================
 USER_SETTINGS = {
     'RES': 'FHD',
@@ -26,9 +26,6 @@ USER_SETTINGS = {
 }
 
 
-# ==========================================
-# NARZĘDZIA SYSTEMOWE
-# ==========================================
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
@@ -37,31 +34,20 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-# ==========================================
-# ZASOBY (Z DODANYM 'tension_reg')
-# ==========================================
 KONFIGURACJE = {
     'FHD': {
-        'ryba_img': resource_path('ind2.png'),
-        'ryba_reg': (534, 1008, 32, 32),
-        'spacja_img': resource_path('space2.png'),
-        'spacja_reg': (798, 973, 65, 16),
-        'zero_img': resource_path('gotowy.png'),
-        'zero_reg': (606, 1027, 47, 12),
-        'dno_img': resource_path('dno.png'),
-        'dno_reg': (536, 1024, 30, 12),
-        'tension_reg': (943, 1047, 10, 11)  # <--- Obszar paska napięcia
+        'ryba_img': resource_path('ind2.png'), 'ryba_reg': (534, 1008, 32, 32),
+        'spacja_img': resource_path('space2.png'), 'spacja_reg': (798, 973, 65, 16),
+        'zero_img': resource_path('gotowy.png'), 'zero_reg': (606, 1027, 47, 12),
+        'dno_img': resource_path('dno.png'), 'dno_reg': (536, 1024, 30, 12),
+        'tension_reg': (943, 1047, 10, 11)
     },
     '2K': {
-        'ryba_img': resource_path('indicator.png'),
-        'ryba_reg': (855, 1369, 30, 30),
-        'spacja_img': resource_path('space.png'),
-        'spacja_reg': (1120, 1227, 62, 16),
-        'zero_img': resource_path('ready.png'),
-        'zero_reg': (896, 1387, 34, 9),
-        'dno_img': resource_path('movement.png'),
-        'dno_reg': (856, 1384, 65, 12),
-        'tension_reg': (933, 1407, 10, 11)  # <--- Obszar paska napięcia
+        'ryba_img': resource_path('indicator.png'), 'ryba_reg': (855, 1369, 30, 30),
+        'spacja_img': resource_path('space.png'), 'spacja_reg': (1120, 1227, 62, 16),
+        'zero_img': resource_path('ready.png'), 'zero_reg': (896, 1387, 34, 9),
+        'dno_img': resource_path('movement.png'), 'dno_reg': (856, 1384, 65, 12),
+        'tension_reg': (933, 1407, 10, 11)
     }
 }
 
@@ -74,7 +60,9 @@ MAX_CZAS_HOLU = 900
 TIMEOUT_OPADANIA = 600
 MOC_RZUTU_CZAS = 0.1
 
+# Zmienne stanu (Globalne)
 running = False
+kill_signal = False
 TOTAL_COUNTER = 0
 SESSION_COUNTER = 0
 BOT_STATUS = "GOTOWY"
@@ -86,7 +74,39 @@ lbl_status = None
 
 
 # ==========================================
-# FUNKCJE POMOCNICZE
+# OBSŁUGA KLAWISZY (ASYNCHRONICZNA)
+# ==========================================
+def toggle_pause():
+    global running
+    resetuj_klawisze()
+    running = not running
+    if running:
+        set_status("START")
+        winsound.Beep(600, 200)
+    else:
+        set_status("PAUZA")
+        zapisz_statystyki()
+        winsound.Beep(400, 200)
+
+
+def kill_bot():
+    global kill_signal
+    print("\n!!! KILL SWITCH (F12) !!!")
+    kill_signal = True
+    resetuj_klawisze()
+    zapisz_statystyki()
+    winsound.Beep(200, 500)
+    os._exit(0)
+
+
+def resetuj_klawisze():
+    pyautogui.mouseUp(button='right')
+    pyautogui.mouseUp(button='left')
+    pyautogui.keyUp('shift')
+
+
+# ==========================================
+# NARZĘDZIA SYSTEMOWE
 # ==========================================
 def wczytaj_statystyki():
     global TOTAL_COUNTER
@@ -108,11 +128,6 @@ def zapisz_statystyki():
 
 
 def pobierz_obraz_z_ekranu(region, gray=True):
-    """
-    Pobiera wycinek ekranu.
-    gray=True -> zwraca obraz czarno-biały (do szukania wzorców)
-    gray=False -> zwraca obraz kolorowy BGR (do sprawdzania czerwonego paska)
-    """
     x, y, width, height = region
     hwnd = win32gui.GetDesktopWindow()
     hwndDC = win32gui.GetWindowDC(hwnd)
@@ -129,11 +144,10 @@ def pobierz_obraz_z_ekranu(region, gray=True):
     saveDC.DeleteDC()
     mfcDC.DeleteDC()
     win32gui.ReleaseDC(hwnd, hwndDC)
-
     if gray:
         return cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
     else:
-        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # Kolor dla paska napięcia
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
 
 def szukaj_wzorca(template_gray, region, prog=PROG_DOPASOWANIA):
@@ -149,36 +163,13 @@ def szukaj_wzorca(template_gray, region, prog=PROG_DOPASOWANIA):
 
 
 def czy_jest_czerwone(region):
-    """ Sprawdza czy w danym regionie dominuje kolor czerwony (napięcie) """
     try:
         img_bgr = pobierz_obraz_z_ekranu(region, gray=False)
-        # Obliczamy średni kolor
-        avg_color_per_row = np.average(img_bgr, axis=0)
-        avg_color = np.average(avg_color_per_row, axis=0)
-
-        # BGR: [0]=Blue, [1]=Green, [2]=Red
-        blue, green, red = avg_color
-
-        # Warunek czerwonego paska: Dużo czerwonego, mało niebieskiego i zielonego
-        if red > 140 and green < 100 and blue < 100:
-            return True
+        blue, green, red = np.average(np.average(img_bgr, axis=0), axis=0)
+        if red > 140 and green < 100 and blue < 100: return True
         return False
     except:
         return False
-
-
-def resetuj_klawisze():
-    pyautogui.mouseUp(button='right')
-    pyautogui.mouseUp(button='left')
-    pyautogui.keyUp('shift')
-
-
-def wyjscie_awaryjne():
-    print("\n!!! ZAMYKANIE BOTA !!!")
-    zapisz_statystyki()
-    resetuj_klawisze()
-    winsound.Beep(200, 500)
-    os._exit(0)
 
 
 def set_status(text):
@@ -186,24 +177,15 @@ def set_status(text):
     BOT_STATUS = text
 
 
-def inteligentne_czekanie(sekundy):
-    global running
-    start = time.time()
-    while time.time() - start < sekundy:
-        if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
-        if keyboard.is_pressed(KLAWISZ_START):
-            resetuj_klawisze()
-            running = not running
-            if running:
-                set_status("WZNOWIONO")
-                winsound.Beep(600, 200)
-            else:
-                set_status("PAUZA")
-                zapisz_statystyki()
-                winsound.Beep(400, 200)
-            time.sleep(0.5)
+# ==========================================
+# SMART WAIT
+# ==========================================
+def wait(seconds):
+    end_time = time.time() + seconds
+    while time.time() < end_time:
+        if kill_signal: os._exit(0)
         if not running: return False
-        time.sleep(0.02)
+        time.sleep(0.01)
     return True
 
 
@@ -221,7 +203,6 @@ def show_launcher():
     style = ttk.Style()
     style.theme_use('clam')
     style.configure('TRadiobutton', background='#1a1b26', foreground='white', font=('Segoe UI', 10))
-    style.configure('TLabel', background='#1a1b26', foreground='white', font=('Segoe UI', 10))
 
     var_res = tk.StringVar(value='2K')
     var_mode = tk.StringVar(value='CZAS')
@@ -229,22 +210,19 @@ def show_launcher():
 
     tk.Label(launcher, text="MARINER SETUP", font=("Segoe UI", 16, "bold"), bg='#1a1b26', fg='#7aa2f7').pack(pady=15)
 
-    tk.Label(launcher, text="Rozdzielczość:", bg='#1a1b26', fg='#a9b1d6', font=("Segoe UI", 9, "bold")).pack(anchor='w',
-                                                                                                             padx=20)
+    tk.Label(launcher, text="Rozdzielczość:", bg='#1a1b26', fg='#a9b1d6').pack(anchor='w', padx=20)
     ttk.Radiobutton(launcher, text="FHD (1920x1080)", variable=var_res, value='FHD').pack(anchor='w', padx=30)
     ttk.Radiobutton(launcher, text="2K (2560x1440)", variable=var_res, value='2K').pack(anchor='w', padx=30)
 
     tk.Label(launcher, text="", bg='#1a1b26').pack()
-
-    tk.Label(launcher, text="Tryb opadania:", bg='#1a1b26', fg='#a9b1d6', font=("Segoe UI", 9, "bold")).pack(anchor='w',
-                                                                                                             padx=20)
+    tk.Label(launcher, text="Tryb opadania:", bg='#1a1b26', fg='#a9b1d6').pack(anchor='w', padx=20)
     ttk.Radiobutton(launcher, text="Czasowy (Stały)", variable=var_mode, value='CZAS').pack(anchor='w', padx=30)
 
-    frame_time = tk.Frame(launcher, bg='#1a1b26')
-    frame_time.pack(anchor='w', padx=50)
-    tk.Label(frame_time, text="Sekundy:", bg='#1a1b26', fg='#565f89', font=("Segoe UI", 9)).pack(side='left')
-    tk.Entry(frame_time, textvariable=var_time, width=5, bg='#24283b', fg='white', insertbackground='white').pack(
-        side='left', padx=5)
+    f_time = tk.Frame(launcher, bg='#1a1b26')
+    f_time.pack(anchor='w', padx=50)
+    tk.Label(f_time, text="Sekundy:", bg='#1a1b26', fg='#565f89').pack(side='left')
+    tk.Entry(f_time, textvariable=var_time, width=5).pack(side='left', padx=5)
+
     ttk.Radiobutton(launcher, text="Auto-Dno (Obraz)", variable=var_mode, value='DNO').pack(anchor='w', padx=30)
 
     def on_start():
@@ -256,25 +234,23 @@ def show_launcher():
             USER_SETTINGS['TIME'] = 20
         launcher.destroy()
 
-    tk.Button(launcher, text="URUCHOM", command=on_start, bg='#00e676', fg='black', font=("Segoe UI", 10, "bold"),
-              width=15).pack(pady=25)
+    tk.Button(launcher, text="URUCHOM", command=on_start, bg='#00e676', font=("Segoe UI", 10, "bold"), width=15).pack(
+        pady=25)
     launcher.mainloop()
 
 
 # ==========================================
-# GŁÓWNA LOGIKA BOTA
+# LOGIKA BOTA
 # ==========================================
 def bot_logic():
     global running, SESSION_COUNTER, TOTAL_COUNTER, ACTIVE_CONFIG
 
     try:
-        active_res = USER_SETTINGS['RES']
-        ACTIVE_CONFIG = KONFIGURACJE[active_res]
+        ACTIVE_CONFIG = KONFIGURACJE[USER_SETTINGS['RES']]
 
-        # Sprawdzanie zasobów
         for plik in ['ryba_img']:
             if not os.path.isfile(ACTIVE_CONFIG[plik]):
-                set_status(f"BRAK PLIKU: {ACTIVE_CONFIG[plik]}")
+                set_status(f"BRAK: {ACTIVE_CONFIG[plik]}")
                 return
 
         template_ryba = cv2.imread(ACTIVE_CONFIG['ryba_img'], 0)
@@ -288,180 +264,214 @@ def bot_logic():
         if tryb_dno and os.path.isfile(ACTIVE_CONFIG['dno_img']):
             template_dno = cv2.imread(ACTIVE_CONFIG['dno_img'], 0)
 
+        keyboard.add_hotkey(KLAWISZ_START, toggle_pause)
+        keyboard.add_hotkey(KLAWISZ_KONIEC, kill_bot)
+
         wymagany_rzut = True
         set_status(f"GOTOWY ({KLAWISZ_START})")
-        keyboard.add_hotkey(KLAWISZ_KONIEC, wyjscie_awaryjne)
 
         while True:
-            if keyboard.is_pressed(KLAWISZ_START):
-                resetuj_klawisze()
-                running = not running
-                if running:
-                    set_status("START")
-                    winsound.Beep(600, 200)
-                else:
-                    set_status("PAUZA")
-                    zapisz_statystyki()
-                    winsound.Beep(400, 200)
-                time.sleep(0.5)
+            if not running:
+                time.sleep(0.1)
+                continue
 
-            if running:
-                # --- RZUT ---
-                if wymagany_rzut:
-                    set_status("RZUT")
-                    pyautogui.keyUp('shift')
-                    time.sleep(0.2)
-                    pyautogui.mouseDown(button='left')
-                    time.sleep(MOC_RZUTU_CZAS)
-                    pyautogui.mouseUp(button='left')
+            # ========================
+            # FAZA 1: RZUT
+            # ========================
+            if wymagany_rzut:
+                set_status("RZUT")
+                pyautogui.keyUp('shift')
+                if not wait(0.2): continue
 
-                    start_opadu = time.time()
-                    przerwano_opad = False
-                    set_status("OPADANIE...")
-
-                    while True:
-                        if not running: break
-                        if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
-
-                        if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
-                            set_status("BRANIE (OPAD)!")
-                            przerwano_opad = True
-                            break
-
-                        teraz = time.time()
-                        if tryb_dno and template_dno is not None:
-                            if szukaj_wzorca(template_dno, ACTIVE_CONFIG['dno_reg'], prog=0.7)[0]: break
-                            if teraz - start_opadu > TIMEOUT_OPADANIA: break
-                        else:
-                            if teraz - start_opadu > czas_opadu: break
-                        time.sleep(0.05)
-
-                    if not running: continue
-                    if not przerwano_opad:
-                        pyautogui.mouseDown(button='left')
-                        time.sleep(0.5)
-                        pyautogui.mouseUp(button='left')
-                        wymagany_rzut = False
-
-                # --- JIGOWANIE ---
-                set_status("JIGOWANIE")
-                pyautogui.mouseDown(button='right')
-                if not inteligentne_czekanie(random.uniform(0.5, 0.8)):
-                    pyautogui.mouseUp(button='right');
+                pyautogui.mouseDown(button='left')
+                if not wait(MOC_RZUTU_CZAS):
+                    pyautogui.mouseUp(button='left');
                     continue
-                pyautogui.mouseUp(button='right')
+                pyautogui.mouseUp(button='left')
 
-                start_skan = time.time()
-                ryba_znaleziona = False
-                while time.time() - start_skan < random.uniform(1.8, 2.2):
+                start_opadu = time.time()
+                przerwano_opad = False
+                set_status("OPADANIE...")
+
+                while True:
                     if not running: break
                     if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
-                        ryba_znaleziona = True
+                        set_status("BRANIE (OPAD)!")
+                        przerwano_opad = True
                         break
-                    time.sleep(0.1)
+                    teraz = time.time()
+                    if tryb_dno and template_dno is not None:
+                        if szukaj_wzorca(template_dno, ACTIVE_CONFIG['dno_reg'], prog=0.7)[0]: break
+                        if teraz - start_opadu > TIMEOUT_OPADANIA: break
+                    else:
+                        if teraz - start_opadu > czas_opadu: break
+                    time.sleep(0.02)
 
                 if not running: continue
 
-                # --- HOLOWANIE Z KONTROLĄ NAPIĘCIA ---
-                if ryba_znaleziona:
-                    set_status(">>> HOLOWANIE <<<")
-                    winsound.Beep(1000, 200)
+                wymagany_rzut = False
 
-                    # Stan początkowy klawiszy (trzymamy)
-                    pyautogui.mouseDown(button='right')
+                if not przerwano_opad:
+                    # Sytuacja A: Dno (Normalne zamknięcie)
+                    pyautogui.mouseDown(button='left')
+                    if not wait(0.5): pyautogui.mouseUp(button='left'); continue
+                    pyautogui.mouseUp(button='left')
+                else:
+                    # Sytuacja B: Branie z opadu (Szybkie zamknięcie kabłąka!)
+                    set_status("ZAMYKANIE KABŁĄKA!")
 
-                    # Zmienne do pulsowania
-                    trzymamy_zwijanie = False
+                    # 1. Klikamy LPM żeby zamknąć kabłąk
+                    pyautogui.mouseDown(button='left')
+                    time.sleep(0.1)  # Krótki klik
+                    pyautogui.mouseUp(button='left')
 
-                    start_holu = time.time()
-                    sukces = False
-                    spadla = False
-                    licznik_znikniec = 0
+                    # 2. Czekamy ułamek sekundy, żeby gra zdążyła przetworzyć zamknięcie
+                    # zanim w kolejnym kroku bot podniesie wędkę (PPM)
+                    time.sleep(0.3)
 
-                    while time.time() - start_holu < MAX_CZAS_HOLU:
+            # ========================
+            # FAZA 2: JIGOWANIE
+            # ========================
+            set_status("JIGOWANIE")
+            pyautogui.mouseDown(button='right')
+            if not wait(random.uniform(0.5, 0.8)):
+                pyautogui.mouseUp(button='right');
+                continue
+            pyautogui.mouseUp(button='right')
+
+            start_skan = time.time()
+            ryba_znaleziona = False
+            end_scan = start_skan + random.uniform(1.8, 2.2)
+
+            while time.time() < end_scan:
+                if not running: break
+                if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
+                    ryba_znaleziona = True
+                    break
+                time.sleep(0.05)
+
+            if not running: continue
+
+            # ========================
+            # FAZA 3: HOLOWANIE
+            # ========================
+            if ryba_znaleziona:
+                set_status(">>> HOLOWANIE <<<")
+                winsound.Beep(1000, 200)
+
+                pyautogui.keyDown('shift')
+                pyautogui.mouseDown(button='left')
+                pyautogui.mouseDown(button='right')
+
+                # Zmienne holu
+                trzymamy_zwijanie = False
+                hamulec_zablokowany = False  # Zakładamy że startujemy z "niepewnego" stanu
+
+                # # Na starcie holu zamykamy hamulec (dla pewności, żeby ciągnął na 30)
+                # pyautogui.scroll(1)
+                # hamulec_zablokowany = True
+
+                start_holu = time.time()
+                sukces = False
+                spadla = False
+                licznik_znikniec = 0
+
+                while time.time() - start_holu < MAX_CZAS_HOLU:
+                    if not running: break
+
+                    # A. Ryba?
+                    if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
+                        licznik_znikniec += 1
+                    else:
+                        licznik_znikniec = 0
+
+                    if licznik_znikniec > 12: spadla = True; break
+
+                    # B. Spacja?
+                    if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[0]:
+                        sukces = True;
+                        break
+
+                    # C. Napięcie i Blokowanie Hamulca (Scroll Logic)
+                    jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
+
+                    if jest_czerwono:
+                        set_status("NAPIĘCIE! (29)")
+
+                        # Jeśli hamulec był zamknięty (30), to go otwieramy (29)
+                        if hamulec_zablokowany:
+                            pyautogui.scroll(-1)
+                            hamulec_zablokowany = False
+
+                        # W RF4 często przy puszczaniu hamulca warto dalej zwijać, żeby nie tracić napięcia całkowicie,
+                        # ale jeśli jest BARDZO czerwono, napięcie samo spadnie.
+                        # Zakładamy, że trzymamy zwijanie.
+                        if not trzymamy_zwijanie:
+                            pyautogui.mouseDown(button='left')
+                            pyautogui.keyDown('shift')
+                            trzymamy_zwijanie = True
+
+                    else:
+                        set_status("HOL (30)")
+
+                        # Jest bezpiecznie - zamykamy hamulec (30)
+                        if not hamulec_zablokowany:
+                            pyautogui.scroll(1)
+                            hamulec_zablokowany = True
+
+                        # I zwijamy
+                        if not trzymamy_zwijanie:
+                            pyautogui.mouseDown(button='left')
+                            pyautogui.keyDown('shift')
+                            trzymamy_zwijanie = True
+
+                    time.sleep(0.05)
+
+                resetuj_klawisze()
+                if not running: continue
+
+                if sukces:
+                    set_status("ZŁOWIONO!")
+                    if not wait(1.0): continue
+                    pyautogui.press('space')
+                    SESSION_COUNTER += 1;
+                    TOTAL_COUNTER += 1
+                    zapisz_statystyki()
+                    if not wait(2.0): continue
+                    wymagany_rzut = True
+
+                elif spadla:
+                    set_status("SPADŁA - ZWIJAM")
+                    # Szybkie zwijanie - hamulec na max
+
+                    pyautogui.mouseDown(button='left')
+                    pyautogui.keyDown('shift')
+                    pyautogui.mouseUp(button='right')
+
+                    start_zwijania = time.time()
+                    nowe_branie = False
+
+                    while time.time() - start_zwijania < 45:
                         if not running: break
-                        if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
-
-                        # 1. Sprawdź czy ryba jest
-                        if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
-                            licznik_znikniec += 1
-                        else:
-                            licznik_znikniec = 0
-
-                        if licznik_znikniec > 12:
-                            spadla = True;
+                        if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
+                            set_status("PONOWNY ATAK!")
+                            ryba_znaleziona = True
+                            nowe_branie = True
                             break
-
-                        # 2. Sprawdź sukces (Spacja)
-                        if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[
-                            0]:
-                            sukces = True;
+                        if template_zero is not None and szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                             break
-
-                        # 3. KONTROLA NAPIĘCIA (CZERWONY PASEK)
-                        jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
-
-                        if jest_czerwono:
-                            set_status("NAPIEcie! (STOP)")
-                            if trzymamy_zwijanie:
-                                pyautogui.keyUp('shift')
-                                pyautogui.mouseUp(button='left')
-                                trzymamy_zwijanie = False
-                        else:
-                            # Jest bezpiecznie -> Zwijamy
-                            if not trzymamy_zwijanie:
-                                set_status(">>> HOLOWANIE <<<")
-                                pyautogui.keyDown('shift')
-                                pyautogui.mouseDown(button='left')
-                                trzymamy_zwijanie = True
-
                         time.sleep(0.05)
 
+                    if nowe_branie: continue
+
                     resetuj_klawisze()
-
-                    if sukces:
-                        set_status("ZŁOWIONO!")
-                        time.sleep(1.0)
-                        pyautogui.press('space')
-                        SESSION_COUNTER += 1
-                        TOTAL_COUNTER += 1
-                        zapisz_statystyki()
-                        time.sleep(2.0)
-                        wymagany_rzut = True
-
-                    elif spadla and running:
-                        set_status("SPADŁA - ZWIJAM")
-                        pyautogui.mouseUp(button='right')
-                        pyautogui.keyDown('shift')
-                        pyautogui.mouseDown(button='left')
-
-                        start_zwijania = time.time()
-                        nowe_branie = False
-
-                        while time.time() - start_zwijania < 45:
-                            if not running: break
-                            if keyboard.is_pressed(KLAWISZ_KONIEC): wyjscie_awaryjne()
-
-                            if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
-                                set_status("PONOWNY ATAK!")
-                                ryba_znaleziona = True
-                                nowe_branie = True
-                                break
-
-                            if template_zero is not None and \
-                                    szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
-                                break
-                            time.sleep(0.05)
-
-                        if nowe_branie: continue
-                        resetuj_klawisze()
-                        time.sleep(1.5)
-                        wymagany_rzut = True
+                    if not wait(1.5): continue
+                    wymagany_rzut = True
             else:
-                time.sleep(0.1)
+                time.sleep(0.05)
 
     except Exception as e:
-        print(f"BŁĄD WĄTKU: {e}")
+        print(f"BŁĄD: {e}")
         traceback.print_exc()
 
 
@@ -475,53 +485,41 @@ def main_gui():
     root.geometry("460x160")
     root.configure(bg='#1a1b26')
     root.attributes('-topmost', True)
-    root.lift()
 
-    bg_color, accent_color, text_color = '#1a1b26', '#7aa2f7', '#c0caf5'
-
-    res_info = USER_SETTINGS['RES']
-    mode_info = "Auto-Dno" if USER_SETTINGS['MODE'] == 'DNO' else f"Czas ({USER_SETTINGS['TIME']}s)"
+    bg_color = '#1a1b26'
 
     main_frame = tk.Frame(root, bg=bg_color)
     main_frame.pack(fill='both', expand=True, padx=10, pady=10)
 
     left_frame = tk.Frame(main_frame, bg=bg_color)
     left_frame.pack(side='left', fill='both', expand=True)
-    tk.Label(left_frame, text="⚓ MARINER", font=("Segoe UI", 16, "bold"), bg=bg_color, fg=accent_color).pack(anchor='w')
-    lbl_status = tk.Label(left_frame, text="ŁADOWANIE...", font=("Segoe UI", 12, "bold"), bg=bg_color, fg='#e0af68')
+    tk.Label(left_frame, text="⚓ MARINER", font=("Segoe UI", 16, "bold"), bg=bg_color, fg='#7aa2f7').pack(anchor='w')
+    lbl_status = tk.Label(left_frame, text="...", font=("Segoe UI", 12, "bold"), bg=bg_color, fg='#e0af68')
     lbl_status.pack(anchor='w', pady=(5, 0))
-    lbl_counter = tk.Label(left_frame, text="Sesja: 0 | Razem: 0", font=("Segoe UI", 11), bg=bg_color, fg=text_color)
+    lbl_counter = tk.Label(left_frame, text="...", font=("Segoe UI", 11), bg=bg_color, fg='#c0caf5')
     lbl_counter.pack(anchor='w', pady=(5, 0))
 
     right_frame = tk.Frame(main_frame, bg=bg_color)
     right_frame.pack(side='right', fill='both', padx=(20, 0))
-    tk.Frame(main_frame, bg='#414868', width=2).pack(side='right', fill='y', padx=5)
     tk.Label(right_frame, text="STEROWANIE", font=("Segoe UI", 9, "bold"), bg=bg_color, fg='#565f89').pack(anchor='e')
-    tk.Label(right_frame, text=f"Start / Pauza: [{KLAWISZ_START}]", font=("Segoe UI", 9), bg=bg_color,
-             fg=text_color).pack(anchor='e')
-    tk.Label(right_frame, text=f"Wyjście: [{KLAWISZ_KONIEC}]", font=("Segoe UI", 9), bg=bg_color, fg=text_color).pack(
-        anchor='e')
-    tk.Label(right_frame, text="", bg=bg_color).pack()
-    tk.Label(right_frame, text=f"Res: {res_info}", font=("Segoe UI", 8), bg=bg_color, fg='#565f89').pack(anchor='e')
-    tk.Label(right_frame, text=f"Tryb: {mode_info}", font=("Segoe UI", 8), bg=bg_color, fg='#565f89').pack(anchor='e')
+    tk.Label(right_frame, text=f"Start: {KLAWISZ_START}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
+    tk.Label(right_frame, text=f"Stop: {KLAWISZ_KONIEC}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
 
     def update_gui():
         try:
             lbl_counter.config(text=f"Sesja: {SESSION_COUNTER}  |  Razem: {TOTAL_COUNTER}")
             lbl_status.config(text=BOT_STATUS)
             st = BOT_STATUS.upper()
-            color = '#7dcfff'
+            col = '#7dcfff'
             if "PAUZA" in st:
-                color = '#f7768e'
+                col = '#f7768e'
             elif "HOL" in st:
-                color = '#bb9af7'
+                col = '#bb9af7'
             elif "ZŁOWIONO" in st:
-                color = '#9ece6a'
-            elif "SPADŁA" in st:
-                color = '#e0af68'
-            elif "NAPIECIE" in st:
-                color = '#ff0000'  # Czerwony dla napięcia
-            lbl_status.config(fg=color)
+                col = '#9ece6a'
+            elif "NAPIĘCIE" in st:
+                col = '#ff0000'
+            lbl_status.config(fg=col)
         except:
             pass
         root.after(200, update_gui)
@@ -531,12 +529,7 @@ def main_gui():
 
 
 if __name__ == "__main__":
-    try:
-        wczytaj_statystyki()
-        show_launcher()
-        bot_thread = threading.Thread(target=bot_logic, daemon=True)
-        bot_thread.start()
-        main_gui()
-    except Exception as e:
-        print(f"BŁĄD: {e}")
-        traceback.print_exc()
+    wczytaj_statystyki()
+    show_launcher()
+    threading.Thread(target=bot_logic, daemon=True).start()
+    main_gui()
