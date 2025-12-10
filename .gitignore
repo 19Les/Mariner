@@ -1,0 +1,19 @@
+# Foldery budowania (PyInstaller)
+build/
+dist/
+*.spec
+
+# Pliki tymczasowe Pythona
+__pycache__/
+*.pyc
+
+# Konfiguracje środowiska IDE (opcjonalne)
+.idea/
+.vscode/
+
+# Lokalne środowisko wirtualne (jeśli używasz venv)
+venv/
+env/
+
+# Opcjonalnie: Plik ze statystykami (jeśli nie chcesz go synchronizować między komputerami)
+stats.json
