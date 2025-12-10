@@ -280,8 +280,6 @@ def bot_logic():
             # ========================
             if wymagany_rzut:
                 set_status("RZUT")
-                pyautogui.keyUp('shift')
-                if not wait(0.2): continue
 
                 pyautogui.mouseDown(button='left')
                 if not wait(MOC_RZUTU_CZAS):
@@ -314,8 +312,7 @@ def bot_logic():
                 if not przerwano_opad:
                     # Sytuacja A: Dno (Normalne zamknięcie)
                     pyautogui.mouseDown(button='left')
-                    if not wait(0.5): pyautogui.mouseUp(button='left'); continue
-                    pyautogui.mouseUp(button='left')
+                    pyautogui.mouseUp(button='left');
                 else:
                     # Sytuacja B: Branie z opadu (Szybkie zamknięcie kabłąka!)
                     set_status("ZAMYKANIE KABŁĄKA!")
@@ -368,7 +365,7 @@ def bot_logic():
                 hamulec_zablokowany = False  # Zakładamy że startujemy z "niepewnego" stanu
 
                 # # Na starcie holu zamykamy hamulec (dla pewności, żeby ciągnął na 30)
-                # pyautogui.scroll(1)
+                # pyautogui.scroll(-1)
                 # hamulec_zablokowany = True
 
                 start_holu = time.time()
