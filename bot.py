@@ -63,8 +63,15 @@ MOC_RZUTU_CZAS = 0.1
 # Zmienne stanu (Globalne)
 running = False
 kill_signal = False
+
+# --- STATYSTYKI RYB ---
 TOTAL_COUNTER = 0
 SESSION_COUNTER = 0
+
+# --- STATYSTYKI CZASU ---
+TOTAL_TIME_SECONDS = 0.0
+SESSION_TIME_SECONDS = 0.0
+
 BOT_STATUS = "GOTOWY"
 ACTIVE_CONFIG = {}
 
@@ -106,23 +113,36 @@ def resetuj_klawisze():
 
 
 # ==========================================
-# NARZĘDZIA SYSTEMOWE
+# NARZĘDZIA SYSTEMOWE I POMOCNICZE
 # ==========================================
+def format_time(seconds):
+    """Zamienia sekundy na format HH:MM:SS"""
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
 def wczytaj_statystyki():
-    global TOTAL_COUNTER
+    global TOTAL_COUNTER, TOTAL_TIME_SECONDS
     if os.path.exists(PLIK_STATYSTYK):
         try:
             with open(PLIK_STATYSTYK, 'r') as f:
                 data = json.load(f)
                 TOTAL_COUNTER = data.get('total_fish', 0)
+                TOTAL_TIME_SECONDS = data.get('total_time', 0.0)
         except:
             TOTAL_COUNTER = 0
+            TOTAL_TIME_SECONDS = 0.0
 
 
 def zapisz_statystyki():
     try:
+        data = {
+            'total_fish': TOTAL_COUNTER,
+            'total_time': TOTAL_TIME_SECONDS
+        }
         with open(PLIK_STATYSTYK, 'w') as f:
-            json.dump({'total_fish': TOTAL_COUNTER}, f)
+            json.dump(data, f)
     except:
         pass
 
@@ -322,8 +342,7 @@ def bot_logic():
                     time.sleep(0.1)  # Krótki klik
                     pyautogui.mouseUp(button='left')
 
-                    # 2. Czekamy ułamek sekundy, żeby gra zdążyła przetworzyć zamknięcie
-                    # zanim w kolejnym kroku bot podniesie wędkę (PPM)
+                    # 2. Czekamy ułamek sekundy
                     time.sleep(0.3)
 
             # ========================
@@ -364,10 +383,6 @@ def bot_logic():
                 trzymamy_zwijanie = False
                 hamulec_zablokowany = False  # Zakładamy że startujemy z "niepewnego" stanu
 
-                # # Na starcie holu zamykamy hamulec (dla pewności, żeby ciągnął na 30)
-                # pyautogui.scroll(-1)
-                # hamulec_zablokowany = True
-
                 start_holu = time.time()
                 sukces = False
                 spadla = False
@@ -389,20 +404,14 @@ def bot_logic():
                         sukces = True;
                         break
 
-                    # C. Napięcie i Blokowanie Hamulca (Scroll Logic)
+                    # C. Napięcie
                     jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
 
                     if jest_czerwono:
                         set_status("NAPIĘCIE! (29)")
-
-                        # Jeśli hamulec był zamknięty (30), to go otwieramy (29)
                         if hamulec_zablokowany:
                             pyautogui.scroll(-1)
                             hamulec_zablokowany = False
-
-                        # W RF4 często przy puszczaniu hamulca warto dalej zwijać, żeby nie tracić napięcia całkowicie,
-                        # ale jeśli jest BARDZO czerwono, napięcie samo spadnie.
-                        # Zakładamy, że trzymamy zwijanie.
                         if not trzymamy_zwijanie:
                             pyautogui.mouseDown(button='left')
                             pyautogui.keyDown('shift')
@@ -410,13 +419,9 @@ def bot_logic():
 
                     else:
                         set_status("HOL (30)")
-
-                        # Jest bezpiecznie - zamykamy hamulec (30)
                         if not hamulec_zablokowany:
                             pyautogui.scroll(1)
                             hamulec_zablokowany = True
-
-                        # I zwijamy
                         if not trzymamy_zwijanie:
                             pyautogui.mouseDown(button='left')
                             pyautogui.keyDown('shift')
@@ -439,7 +444,6 @@ def bot_logic():
 
                 elif spadla:
                     set_status("SPADŁA - ZWIJAM")
-                    # Szybkie zwijanie - hamulec na max
 
                     pyautogui.mouseDown(button='left')
                     pyautogui.keyDown('shift')
@@ -455,7 +459,8 @@ def bot_logic():
                             ryba_znaleziona = True
                             nowe_branie = True
                             break
-                        if template_zero is not None and szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
+                        if template_zero is not None and \
+                                szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                             break
                         time.sleep(0.05)
 
@@ -479,11 +484,16 @@ def main_gui():
     global root, lbl_counter, lbl_status
     root = tk.Tk()
     root.title("Mariner")
-    root.geometry("460x160")
+    # Zwiększyłem lekko wysokość okna, żeby zmieściły się dwie linie tekstu
+    root.geometry("460x170")
     root.configure(bg='#1a1b26')
     root.attributes('-topmost', True)
 
     bg_color = '#1a1b26'
+
+    # Zmienna pomocnicza do obliczania czasu (delta)
+    global last_tick
+    last_tick = time.time()
 
     main_frame = tk.Frame(root, bg=bg_color)
     main_frame.pack(fill='both', expand=True, padx=10, pady=10)
@@ -493,7 +503,8 @@ def main_gui():
     tk.Label(left_frame, text="⚓ MARINER", font=("Segoe UI", 16, "bold"), bg=bg_color, fg='#7aa2f7').pack(anchor='w')
     lbl_status = tk.Label(left_frame, text="...", font=("Segoe UI", 12, "bold"), bg=bg_color, fg='#e0af68')
     lbl_status.pack(anchor='w', pady=(5, 0))
-    lbl_counter = tk.Label(left_frame, text="...", font=("Segoe UI", 11), bg=bg_color, fg='#c0caf5')
+    # Etykieta licznika - teraz będzie wyświetlać też czas
+    lbl_counter = tk.Label(left_frame, text="...", font=("Segoe UI", 10), bg=bg_color, fg='#c0caf5', justify='left')
     lbl_counter.pack(anchor='w', pady=(5, 0))
 
     right_frame = tk.Frame(main_frame, bg=bg_color)
@@ -503,9 +514,24 @@ def main_gui():
     tk.Label(right_frame, text=f"Stop: {KLAWISZ_KONIEC}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
 
     def update_gui():
+        global last_tick, SESSION_TIME_SECONDS, TOTAL_TIME_SECONDS
+
+        # Obliczanie upływu czasu
+        current_tick = time.time()
+        if running:
+            delta = current_tick - last_tick
+            SESSION_TIME_SECONDS += delta
+            TOTAL_TIME_SECONDS += delta
+        last_tick = current_tick
+
         try:
-            lbl_counter.config(text=f"Sesja: {SESSION_COUNTER}  |  Razem: {TOTAL_COUNTER}")
+            # Formatowanie tekstu
+            sesja_str = f"Sesja: {SESSION_COUNTER} ({format_time(SESSION_TIME_SECONDS)})"
+            razem_str = f"Razem: {TOTAL_COUNTER} ({format_time(TOTAL_TIME_SECONDS)})"
+
+            lbl_counter.config(text=f"{sesja_str}\n{razem_str}")
             lbl_status.config(text=BOT_STATUS)
+
             st = BOT_STATUS.upper()
             col = '#7dcfff'
             if "PAUZA" in st:
@@ -519,6 +545,8 @@ def main_gui():
             lbl_status.config(fg=col)
         except:
             pass
+
+        # Odświeżanie co 200ms
         root.after(200, update_gui)
 
     update_gui()
