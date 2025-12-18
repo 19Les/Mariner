@@ -382,6 +382,7 @@ def bot_logic():
                 sukces = False
                 spadla = False
                 licznik_znikniec = 0
+                byl_czerwony = False
 
                 while time.time() - start_holu < MAX_CZAS_HOLU:
                     if not running: break
@@ -402,9 +403,12 @@ def bot_logic():
                     if jest_czerwono:
                         set_status("NAPIĘCIE! (29)")
                         pyautogui.scroll(-1)
+                        byl_czerwony = True
                     else:
                         set_status("HOL (30)")
-                        pyautogui.scroll(1)
+                        if byl_czerwony:
+                            pyautogui.scroll(1)
+                            byl_czerwony = False
 
                     if not wait(random.uniform(0.04, 0.06)): break
 
@@ -457,38 +461,38 @@ def bot_logic():
 
 
 def press_4_after_5_minutes_task():
-    while not running:
-        if kill_signal: return
-        time.sleep(0.5)
+    while True:
+        while not running:
+            if kill_signal: return
+            time.sleep(0.5)
 
-    wait_duration = 300
-    time_waited = 0
-    last_time = time.time()
+        wait_duration = 300
+        time_waited = 0
+        last_time = time.time()
 
-    while time_waited < wait_duration:
-        if kill_signal: return
+        while time_waited < wait_duration:
+            if kill_signal: return
 
-        if running:
-            current_time = time.time()
-            time_waited += current_time - last_time
-            last_time = current_time
-        else:
-            last_time = time.time()
+            if running:
+                current_time = time.time()
+                time_waited += current_time - last_time
+                last_time = current_time
+            else:
+                last_time = time.time()
+                while not running:
+                    if kill_signal: return
+                    time.sleep(0.5)
+                last_time = time.time()
+
+            time.sleep(0.1)
+
+        for _ in range(5):
+            if kill_signal: return
             while not running:
                 if kill_signal: return
                 time.sleep(0.5)
-            last_time = time.time()
-
-        time.sleep(0.1)
-
-    for _ in range(5):
-        if kill_signal: return
-        while not running:
-            if kill_signal: return
-            time.sleep(0.1)
-        pyautogui.press('4')
-        if not wait(random.uniform(0.2, 0.5)):
-            return
+            pyautogui.press('4')
+            time.sleep(random.uniform(0.2, 0.5))
 
 
 # ==========================================
