@@ -11,6 +11,8 @@ import winsound
 import os
 import sys
 import json
+os.environ['TCL_LIBRARY'] = r'C:\Python\tcl\tcl8.6'
+os.environ['TK_LIBRARY'] = r'C:\Python\tcl\tk8.6'
 import tkinter as tk
 from tkinter import ttk
 import threading
@@ -83,7 +85,7 @@ lbl_status = None
 # ==========================================
 # OBSŁUGA KLAWISZY (ASYNCHRONICZNA)
 # ==========================================
-def toggle_pause():
+def toggle_reset():
     global running
     resetuj_klawisze()
     running = not running
@@ -91,7 +93,7 @@ def toggle_pause():
         set_status("START")
         winsound.Beep(600, 200)
     else:
-        set_status("PAUZA")
+        set_status("RESET")
         zapisz_statystyki()
         winsound.Beep(400, 200)
 
@@ -284,7 +286,7 @@ def bot_logic():
         if tryb_dno and os.path.isfile(ACTIVE_CONFIG['dno_img']):
             template_dno = cv2.imread(ACTIVE_CONFIG['dno_img'], 0)
 
-        keyboard.add_hotkey(KLAWISZ_START, toggle_pause)
+        keyboard.add_hotkey(KLAWISZ_START, toggle_reset)
         keyboard.add_hotkey(KLAWISZ_KONIEC, kill_bot)
 
         wymagany_rzut = True
@@ -292,7 +294,10 @@ def bot_logic():
 
         while True:
             if not running:
-                time.sleep(0.1)
+                wymagany_rzut = True
+                while not running:
+                    if kill_signal: os._exit(0)
+                    time.sleep(0.05)
                 continue
 
             # ========================
@@ -302,7 +307,7 @@ def bot_logic():
                 set_status("RZUT")
 
                 pyautogui.mouseDown(button='left')
-                if not wait(MOC_RZUTU_CZAS):
+                if not wait(random.uniform(0.08, 0.12)):
                     pyautogui.mouseUp(button='left');
                     continue
                 pyautogui.mouseUp(button='left')
@@ -323,27 +328,21 @@ def bot_logic():
                         if teraz - start_opadu > TIMEOUT_OPADANIA: break
                     else:
                         if teraz - start_opadu > czas_opadu: break
-                    time.sleep(0.02)
+                    if not wait(random.uniform(0.015, 0.025)): break
 
                 if not running: continue
 
                 wymagany_rzut = False
 
                 if not przerwano_opad:
-                    # Sytuacja A: Dno (Normalne zamknięcie)
                     pyautogui.mouseDown(button='left')
                     pyautogui.mouseUp(button='left');
                 else:
-                    # Sytuacja B: Branie z opadu (Szybkie zamknięcie kabłąka!)
                     set_status("ZAMYKANIE KABŁĄKA!")
-
-                    # 1. Klikamy LPM żeby zamknąć kabłąk
                     pyautogui.mouseDown(button='left')
-                    time.sleep(0.1)  # Krótki klik
+                    if not wait(random.uniform(0.08, 0.12)): continue
                     pyautogui.mouseUp(button='left')
-
-                    # 2. Czekamy ułamek sekundy
-                    time.sleep(0.3)
+                    if not wait(random.uniform(0.25, 0.35)): continue
 
             # ========================
             # FAZA 2: JIGOWANIE
@@ -364,7 +363,7 @@ def bot_logic():
                 if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                     ryba_znaleziona = True
                     break
-                time.sleep(0.05)
+                if not wait(random.uniform(0.04, 0.06)): break
 
             if not running: continue
 
@@ -379,10 +378,6 @@ def bot_logic():
                 pyautogui.mouseDown(button='left')
                 pyautogui.mouseDown(button='right')
 
-                # Zmienne holu
-                trzymamy_zwijanie = False
-                hamulec_zablokowany = False  # Zakładamy że startujemy z "niepewnego" stanu
-
                 start_holu = time.time()
                 sukces = False
                 spadla = False
@@ -391,7 +386,6 @@ def bot_logic():
                 while time.time() - start_holu < MAX_CZAS_HOLU:
                     if not running: break
 
-                    # A. Ryba?
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
@@ -399,47 +393,32 @@ def bot_logic():
 
                     if licznik_znikniec > 12: spadla = True; break
 
-                    # B. Spacja?
                     if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[0]:
                         sukces = True;
                         break
 
-                    # C. Napięcie
                     jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
 
                     if jest_czerwono:
                         set_status("NAPIĘCIE! (29)")
-                        if hamulec_zablokowany:
-                            pyautogui.scroll(-1)
-                            hamulec_zablokowany = False
-                        if not trzymamy_zwijanie:
-                            pyautogui.mouseDown(button='left')
-                            pyautogui.keyDown('shift')
-                            trzymamy_zwijanie = True
-
+                        pyautogui.scroll(-1)
                     else:
                         set_status("HOL (30)")
-                        if not hamulec_zablokowany:
-                            pyautogui.scroll(1)
-                            hamulec_zablokowany = True
-                        if not trzymamy_zwijanie:
-                            pyautogui.mouseDown(button='left')
-                            pyautogui.keyDown('shift')
-                            trzymamy_zwijanie = True
+                        pyautogui.scroll(1)
 
-                    time.sleep(0.05)
+                    if not wait(random.uniform(0.04, 0.06)): break
 
                 resetuj_klawisze()
                 if not running: continue
 
                 if sukces:
                     set_status("ZŁOWIONO!")
-                    if not wait(1.0): continue
+                    if not wait(random.uniform(0.9, 1.1)): continue
                     pyautogui.press('space')
                     SESSION_COUNTER += 1;
                     TOTAL_COUNTER += 1
                     zapisz_statystyki()
-                    if not wait(2.0): continue
+                    if not wait(random.uniform(1.8, 2.2)): continue
                     wymagany_rzut = True
 
                 elif spadla:
@@ -462,19 +441,54 @@ def bot_logic():
                         if template_zero is not None and \
                                 szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                             break
-                        time.sleep(0.05)
+                        if not wait(random.uniform(0.04, 0.06)): break
 
                     if nowe_branie: continue
 
                     resetuj_klawisze()
-                    if not wait(1.5): continue
+                    if not wait(random.uniform(1.4, 1.6)): continue
                     wymagany_rzut = True
             else:
-                time.sleep(0.05)
+                if not wait(random.uniform(0.04, 0.06)): continue
 
     except Exception as e:
         print(f"BŁĄD: {e}")
         traceback.print_exc()
+
+
+def press_4_after_5_minutes_task():
+    while not running:
+        if kill_signal: return
+        time.sleep(0.5)
+
+    wait_duration = 300
+    time_waited = 0
+    last_time = time.time()
+
+    while time_waited < wait_duration:
+        if kill_signal: return
+
+        if running:
+            current_time = time.time()
+            time_waited += current_time - last_time
+            last_time = current_time
+        else:
+            last_time = time.time()
+            while not running:
+                if kill_signal: return
+                time.sleep(0.5)
+            last_time = time.time()
+
+        time.sleep(0.1)
+
+    for _ in range(5):
+        if kill_signal: return
+        while not running:
+            if kill_signal: return
+            time.sleep(0.1)
+        pyautogui.press('4')
+        if not wait(random.uniform(0.2, 0.5)):
+            return
 
 
 # ==========================================
@@ -484,14 +498,12 @@ def main_gui():
     global root, lbl_counter, lbl_status
     root = tk.Tk()
     root.title("Mariner")
-    # Zwiększyłem lekko wysokość okna, żeby zmieściły się dwie linie tekstu
     root.geometry("460x170")
     root.configure(bg='#1a1b26')
     root.attributes('-topmost', True)
 
     bg_color = '#1a1b26'
 
-    # Zmienna pomocnicza do obliczania czasu (delta)
     global last_tick
     last_tick = time.time()
 
@@ -503,20 +515,18 @@ def main_gui():
     tk.Label(left_frame, text="⚓ MARINER", font=("Segoe UI", 16, "bold"), bg=bg_color, fg='#7aa2f7').pack(anchor='w')
     lbl_status = tk.Label(left_frame, text="...", font=("Segoe UI", 12, "bold"), bg=bg_color, fg='#e0af68')
     lbl_status.pack(anchor='w', pady=(5, 0))
-    # Etykieta licznika - teraz będzie wyświetlać też czas
     lbl_counter = tk.Label(left_frame, text="...", font=("Segoe UI", 10), bg=bg_color, fg='#c0caf5', justify='left')
     lbl_counter.pack(anchor='w', pady=(5, 0))
 
     right_frame = tk.Frame(main_frame, bg=bg_color)
     right_frame.pack(side='right', fill='both', padx=(20, 0))
     tk.Label(right_frame, text="STEROWANIE", font=("Segoe UI", 9, "bold"), bg=bg_color, fg='#565f89').pack(anchor='e')
-    tk.Label(right_frame, text=f"Start: {KLAWISZ_START}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
+    tk.Label(right_frame, text=f"Start/Reset: {KLAWISZ_START}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
     tk.Label(right_frame, text=f"Stop: {KLAWISZ_KONIEC}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
 
     def update_gui():
         global last_tick, SESSION_TIME_SECONDS, TOTAL_TIME_SECONDS
 
-        # Obliczanie upływu czasu
         current_tick = time.time()
         if running:
             delta = current_tick - last_tick
@@ -525,7 +535,6 @@ def main_gui():
         last_tick = current_tick
 
         try:
-            # Formatowanie tekstu
             sesja_str = f"Sesja: {SESSION_COUNTER} ({format_time(SESSION_TIME_SECONDS)})"
             razem_str = f"Razem: {TOTAL_COUNTER} ({format_time(TOTAL_TIME_SECONDS)})"
 
@@ -534,7 +543,7 @@ def main_gui():
 
             st = BOT_STATUS.upper()
             col = '#7dcfff'
-            if "PAUZA" in st:
+            if "RESET" in st:
                 col = '#f7768e'
             elif "HOL" in st:
                 col = '#bb9af7'
@@ -546,7 +555,6 @@ def main_gui():
         except:
             pass
 
-        # Odświeżanie co 200ms
         root.after(200, update_gui)
 
     update_gui()
@@ -557,4 +565,5 @@ if __name__ == "__main__":
     wczytaj_statystyki()
     show_launcher()
     threading.Thread(target=bot_logic, daemon=True).start()
+    threading.Thread(target=press_4_after_5_minutes_task, daemon=True).start()
     main_gui()
