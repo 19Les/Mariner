@@ -17,3 +17,4 @@ env/
 
 # Opcjonalnie: Plik ze statystykami (jeśli nie chcesz go synchronizować między komputerami)
 stats.json
+github-recovery-codes.txt
