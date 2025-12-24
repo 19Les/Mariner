@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['tester.py'],
+    ['bot.py'],
     pathex=[],
     binaries=[],
     datas=[('ind2.png', '.'), ('space2.png', '.'), ('gotowy.png', '.'), ('dno.png', '.'), ('indicator.png', '.'), ('space.png', '.'), ('ready.png', '.'), ('movement.png', '.')],

@@ -1,1 +1,1 @@
- pyinstaller --noconsole --onefile --name="RF4_Bot_Master" --add-data "ind2.png;." --add-data "space2.png;." --add-data "gotowy.png;." --add-data "dno.png;." --add-data "indicator.png;." --add-data "space.png;." --add-data "ready.png;." --add-data "movement.png;." bot.py
+ pyinstaller --noconsole --onefile --name="Mariner" --add-data "ind2.png;." --add-data "space2.png;." --add-data "gotowy.png;." --add-data "dno.png;." --add-data "indicator.png;." --add-data "space.png;." --add-data "ready.png;." --add-data "movement.png;." bot.py

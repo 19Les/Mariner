@@ -11,8 +11,8 @@ import winsound
 import os
 import sys
 import json
-os.environ['TCL_LIBRARY'] = r'C:\Python\tcl\tcl8.6'
-os.environ['TK_LIBRARY'] = r'C:\Python\tcl\tk8.6'
+os.environ['TCL_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tcl8.6'
+os.environ['TK_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tk8.6'
 import tkinter as tk
 from tkinter import ttk
 import threading
@@ -36,19 +36,45 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
+# Mechanizm naprawczy dla biblioteki Tcl/Tk
+def repair_tcl_paths():
+    python_exe_dir = os.path.dirname(sys.executable)
+    tcl_dir = os.path.join(python_exe_dir, 'tcl')
+
+    if os.path.exists(tcl_dir):
+        # Szukamy folderów tcl8.6 i tk8.6 (lub innych wersji)
+        for d in os.listdir(tcl_dir):
+            if d.startswith('tcl'):
+                os.environ['TCL_LIBRARY'] = os.path.join(tcl_dir, d)
+            if d.startswith('tk'):
+                os.environ['TK_LIBRARY'] = os.path.join(tcl_dir, d)
+
+
+# Wywołujemy naprawę przed jakąkolwiek operacją na tkinter
+repair_tcl_paths()
+
+
+# ... existing code ...
+def show_launcher():
+    launcher = tk.Tk()
+    launcher.title("Konfiguracja")
+
+
+# ... existing code ...
+
 KONFIGURACJE = {
     'FHD': {
         'ryba_img': resource_path('ind2.png'), 'ryba_reg': (534, 1008, 32, 32),
-        'spacja_img': resource_path('space2.png'), 'spacja_reg': (798, 973, 65, 16),
+        'spacja_img': resource_path('space2.png'), 'spacja_reg': (789, 979, 82, 17),
         'zero_img': resource_path('gotowy.png'), 'zero_reg': (606, 1027, 47, 12),
         'dno_img': resource_path('dno.png'), 'dno_reg': (536, 1024, 30, 12),
         'tension_reg': (943, 1047, 10, 11)
     },
     '2K': {
         'ryba_img': resource_path('indicator.png'), 'ryba_reg': (855, 1369, 30, 30),
-        'spacja_img': resource_path('space.png'), 'spacja_reg': (1120, 1227, 62, 16),
-        'zero_img': resource_path('ready.png'), 'zero_reg': (896, 1387, 34, 9),
-        'dno_img': resource_path('movement.png'), 'dno_reg': (856, 1384, 65, 12),
+        'spacja_img': resource_path('space.png'), 'spacja_reg': (1109, 1289, 82, 17),
+        'zero_img': resource_path('ready.png'), 'zero_reg': (926, 1388, 46, 7),
+        'dno_img': resource_path('movement.png'), 'dno_reg': (856, 1384, 30, 11),
         'tension_reg': (933, 1407, 10, 11)
     }
 }
