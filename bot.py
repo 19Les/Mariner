@@ -13,10 +13,64 @@ import sys
 import json
 os.environ['TCL_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tcl8.6'
 os.environ['TK_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tk8.6'
-import tkinter as tk
-from tkinter import ttk
 import threading
 import traceback
+
+
+# --- TUTAJ ZMIANA: Zaawansowana naprawa ścieżek TCL/TK ---
+def setup_tkinter_environment():
+    """
+    Szuka init.tcl i tk.tcl w folderze tymczasowym (_MEIPASS)
+    i ustawia zmienne środowiskowe dynamicznie.
+    """
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+
+        # 1. Usuń stare zmienne, żeby nie kolidowały z systemem
+        os.environ.pop('TCL_LIBRARY', None)
+        os.environ.pop('TK_LIBRARY', None)
+
+        tcl_path = None
+        tk_path = None
+
+        # 2. Przeszukaj rekurencyjnie folder tymczasowy w poszukiwaniu init.tcl
+        for root, dirs, files in os.walk(base_path):
+            if 'init.tcl' in files:
+                tcl_path = root
+                print(f"Znaleziono TCL w: {tcl_path}")
+            if 'tk.tcl' in files:
+                tk_path = root
+                print(f"Znaleziono TK w: {tk_path}")
+
+            if tcl_path and tk_path:
+                break
+
+        # 3. Jeśli nie znaleziono przez walk, spróbuj standardowych ścieżek PyInstallera
+        if not tcl_path:
+            potential_tcl = os.path.join(base_path, 'tcl')
+            if os.path.exists(potential_tcl):
+                tcl_path = potential_tcl
+
+        if not tk_path:
+            potential_tk = os.path.join(base_path, 'tk')
+            if os.path.exists(potential_tk):
+                tk_path = potential_tk
+
+        # 4. Ustaw zmienne środowiskowe
+        if tcl_path:
+            os.environ['TCL_LIBRARY'] = tcl_path
+        if tk_path:
+            os.environ['TK_LIBRARY'] = tk_path
+
+        # Debugowanie (opcjonalne, zobaczysz to w konsoli jeśli uruchomisz bez --noconsole)
+        if not tcl_path or not tk_path:
+            print("OSTRZEŻENIE: Nie udało się automatycznie znaleźć ścieżek TCL/TK wewnątrz EXE.")
+
+
+setup_tkinter_environment()
+
+import tkinter as tk
+from tkinter import ttk
 
 # ==========================================
 # KONFIGURACJA GLOBALNA
@@ -36,40 +90,6 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
-
-
-# Mechanizm naprawczy dla biblioteki Tcl/Tk w EXE
-def fix_tcl_tk_environment():
-    """ Naprawia ścieżki do bibliotek TCL/TK w skompilowanym EXE """
-    if getattr(sys, 'frozen', False):
-        # Jeśli jesteśmy w pliku EXE (frozen)
-        base_path = sys._MEIPASS
-        tcl_path = os.path.join(base_path, 'tcl')
-        tk_path = os.path.join(base_path, 'tk')
-
-        # PyInstaller w nowszych wersjach wrzuca foldery tcl/tk bezpośrednio do _MEIPASS
-        # Czasami są one w podfolderach tcl8.6 itp.
-        if not os.path.exists(tcl_path):
-            # Fallback - szukanie w podkatalogach jeśli struktura jest inna
-            for root_dir, dirs, files in os.walk(base_path):
-                for d in dirs:
-                    if d.startswith('tcl8'):
-                        os.environ['TCL_LIBRARY'] = os.path.join(root_dir, d)
-                    if d.startswith('tk8'):
-                        os.environ['TK_LIBRARY'] = os.path.join(root_dir, d)
-        else:
-            os.environ['TCL_LIBRARY'] = tcl_path
-            os.environ['TK_LIBRARY'] = tk_path
-    else:
-        # Jeśli uruchamiamy normalnie z Pythona (nie EXE)
-        # Te ścieżki zazwyczaj ustawiają się same, ale jeśli masz problem lokalnie,
-        # możesz tu zostawić swój fix, ale NIE na sztywno C:\Users\PC...
-        pass
-
-
-# Wywołaj naprawę środowiska
-fix_tcl_tk_environment()
-
 
 # ... existing code ...
 def show_launcher():
