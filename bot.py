@@ -29,29 +29,46 @@ USER_SETTINGS = {
 
 
 def resource_path(relative_path):
+    """ Uzyskaj bezwzględną ścieżkę do zasobu, działa dla dev i dla PyInstaller """
     try:
+        # PyInstaller tworzy folder tymczasowy w _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
 
-# Mechanizm naprawczy dla biblioteki Tcl/Tk
-def repair_tcl_paths():
-    python_exe_dir = os.path.dirname(sys.executable)
-    tcl_dir = os.path.join(python_exe_dir, 'tcl')
+# Mechanizm naprawczy dla biblioteki Tcl/Tk w EXE
+def fix_tcl_tk_environment():
+    """ Naprawia ścieżki do bibliotek TCL/TK w skompilowanym EXE """
+    if getattr(sys, 'frozen', False):
+        # Jeśli jesteśmy w pliku EXE (frozen)
+        base_path = sys._MEIPASS
+        tcl_path = os.path.join(base_path, 'tcl')
+        tk_path = os.path.join(base_path, 'tk')
 
-    if os.path.exists(tcl_dir):
-        # Szukamy folderów tcl8.6 i tk8.6 (lub innych wersji)
-        for d in os.listdir(tcl_dir):
-            if d.startswith('tcl'):
-                os.environ['TCL_LIBRARY'] = os.path.join(tcl_dir, d)
-            if d.startswith('tk'):
-                os.environ['TK_LIBRARY'] = os.path.join(tcl_dir, d)
+        # PyInstaller w nowszych wersjach wrzuca foldery tcl/tk bezpośrednio do _MEIPASS
+        # Czasami są one w podfolderach tcl8.6 itp.
+        if not os.path.exists(tcl_path):
+            # Fallback - szukanie w podkatalogach jeśli struktura jest inna
+            for root_dir, dirs, files in os.walk(base_path):
+                for d in dirs:
+                    if d.startswith('tcl8'):
+                        os.environ['TCL_LIBRARY'] = os.path.join(root_dir, d)
+                    if d.startswith('tk8'):
+                        os.environ['TK_LIBRARY'] = os.path.join(root_dir, d)
+        else:
+            os.environ['TCL_LIBRARY'] = tcl_path
+            os.environ['TK_LIBRARY'] = tk_path
+    else:
+        # Jeśli uruchamiamy normalnie z Pythona (nie EXE)
+        # Te ścieżki zazwyczaj ustawiają się same, ale jeśli masz problem lokalnie,
+        # możesz tu zostawić swój fix, ale NIE na sztywno C:\Users\PC...
+        pass
 
 
-# Wywołujemy naprawę przed jakąkolwiek operacją na tkinter
-repair_tcl_paths()
+# Wywołaj naprawę środowiska
+fix_tcl_tk_environment()
 
 
 # ... existing code ...
