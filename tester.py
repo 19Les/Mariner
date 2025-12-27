@@ -11,27 +11,26 @@ import winsound
 import os
 import sys
 import json
-import tkinter as tk
-from tkinter import ttk
 import threading
 import traceback
 
-
 # ==========================================
-# NAPRAWA ŚCIEŻEK TCL/TK (DLA EXEKÓW)
+# KONFIGURACJA ŚRODOWISKA (AUTOMATYCZNA)
 # ==========================================
-def setup_tkinter_environment():
-    if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
-        os.environ.pop('TCL_LIBRARY', None)
-        os.environ.pop('TK_LIBRARY', None)
-        tcl_path = os.path.join(base_path, 'tcl')
-        tk_path = os.path.join(base_path, 'tk')
-        if os.path.exists(tcl_path): os.environ['TCL_LIBRARY'] = tcl_path
-        if os.path.exists(tk_path): os.environ['TK_LIBRARY'] = tk_path
+# To naprawia błąd TCL/TK na każdym komputerze (PC, Kuba, Admin itd.)
+if getattr(sys, 'frozen', False):
+    # Jeśli uruchamiamy jako EXE
+    base_path = sys._MEIPASS
+    os.environ['TCL_LIBRARY'] = os.path.join(base_path, 'tcl', 'tcl8.6')
+    os.environ['TK_LIBRARY'] = os.path.join(base_path, 'tcl', 'tk8.6')
+else:
+    # Jeśli uruchamiamy jako skrypt .py (Twój przypadek teraz)
+    python_path = os.path.dirname(sys.executable)
+    os.environ['TCL_LIBRARY'] = os.path.join(python_path, 'tcl', 'tcl8.6')
+    os.environ['TK_LIBRARY'] = os.path.join(python_path, 'tcl', 'tk8.6')
 
-
-setup_tkinter_environment()
+import tkinter as tk
+from tkinter import ttk
 
 # ==========================================
 # KONFIGURACJA GLOBALNA
@@ -304,7 +303,6 @@ def bot_logic():
         set_status(f"GOTOWY ({KLAWISZ_START})")
 
         while True:
-            # Ręczne sprawdzanie pauzy
             obsluga_pauzy()
 
             if not running:
@@ -314,7 +312,6 @@ def bot_logic():
                     obsluga_pauzy()
                     time.sleep(0.1)
 
-                # Po wznowieniu - jeśli nie było ryby, zaczynamy od rzutu
                 if not ryba_znaleziona:
                     wymagany_rzut = True
                 continue
@@ -395,7 +392,7 @@ def bot_logic():
                     if not running: continue
 
             # ==========================
-            # 3. HOLOWANIE (CRITICAL)
+            # 3. HOLOWANIE
             # ==========================
             if ryba_znaleziona:
                 set_status(">>> HOLOWANIE <<<")
@@ -417,24 +414,20 @@ def bot_logic():
                     if obsluga_pauzy(): break
                     if not running: break
 
-                    # A. SPACJA (PRIORYTET) - obniżony próg dla pewności
                     if template_spacja is not None and \
                             szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'], prog=0.55)[0]:
                         sukces = True;
                         break
 
-                    # B. CZY RYBA JESZCZE JEST?
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
-                        licznik_znikniec = 0  # Resetuj licznik jak mignęła
+                        licznik_znikniec = 0
 
-                    # LIMIT ZWIĘKSZONY DO 60 (ok. 3 sekundy tolerancji na animację wyciągania)
                     if licznik_znikniec > 60:
                         spadla = True;
                         break
 
-                    # C. NAPIĘCIE
                     jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
 
                     if jest_czerwono:
@@ -442,16 +435,16 @@ def bot_logic():
                         if trzymamy_zwijanie:
                             pyautogui.mouseUp(button='left')
                             trzymamy_zwijanie = False
-
                         if hamulec_zablokowany:
                             pyautogui.scroll(-3)
                             hamulec_zablokowany = False
+                            time.sleep(0.05)
                     else:
                         set_status("HOL (30)")
                         if not hamulec_zablokowany:
                             pyautogui.scroll(3)
                             hamulec_zablokowany = True
-
+                            time.sleep(0.05)
                         if not trzymamy_zwijanie:
                             pyautogui.mouseDown(button='left')
                             pyautogui.keyDown('shift')
@@ -475,7 +468,6 @@ def bot_logic():
 
                 elif spadla:
                     set_status("SPADŁA - ZWIJAM")
-                    # Próba szybkiego zwinięcia i sprawdzenia czy coś wzięło w międzyczasie
 
                     pyautogui.mouseDown(button='left')
                     pyautogui.keyDown('shift')
@@ -496,6 +488,7 @@ def bot_logic():
                         if template_zero is not None and \
                                 szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                             break
+
                         if not wait(0.05): break
 
                     if not running:
@@ -504,7 +497,7 @@ def bot_logic():
 
                     if nowe_branie:
                         resetuj_klawisze()
-                        continue  # Pętla leci od nowa z ryba_znaleziona=True
+                        continue
 
                     ryba_znaleziona = False
                     resetuj_klawisze()
