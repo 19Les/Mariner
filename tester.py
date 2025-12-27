@@ -11,27 +11,17 @@ import winsound
 import os
 import sys
 import json
-import tkinter as tk
-from tkinter import ttk
 import threading
 import traceback
 
-
 # ==========================================
-# NAPRAWA ŚCIEŻEK TCL/TK (DLA EXEKÓW)
+# KONFIGURACJA ŚRODOWISKA (SZTYWNE ŚCIEŻKI)
 # ==========================================
-def setup_tkinter_environment():
-    if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
-        os.environ.pop('TCL_LIBRARY', None)
-        os.environ.pop('TK_LIBRARY', None)
-        tcl_path = os.path.join(base_path, 'tcl')
-        tk_path = os.path.join(base_path, 'tk')
-        if os.path.exists(tcl_path): os.environ['TCL_LIBRARY'] = tcl_path
-        if os.path.exists(tk_path): os.environ['TK_LIBRARY'] = tk_path
+os.environ['TCL_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tcl8.6'
+os.environ['TK_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tk8.6'
 
-
-setup_tkinter_environment()
+import tkinter as tk
+from tkinter import ttk
 
 # ==========================================
 # KONFIGURACJA GLOBALNA
@@ -417,7 +407,7 @@ def bot_logic():
                     if obsluga_pauzy(): break
                     if not running: break
 
-                    # A. SPACJA (PRIORYTET) - obniżony próg dla pewności
+                    # A. SPACJA (PRIORYTET)
                     if template_spacja is not None and \
                             szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'], prog=0.55)[0]:
                         sukces = True;
@@ -427,9 +417,9 @@ def bot_logic():
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
-                        licznik_znikniec = 0  # Resetuj licznik jak mignęła
+                        licznik_znikniec = 0
 
-                    # LIMIT ZWIĘKSZONY DO 60 (ok. 3 sekundy tolerancji na animację wyciągania)
+                        # Zwiększony limit (cierpliwość bota)
                     if licznik_znikniec > 60:
                         spadla = True;
                         break
@@ -475,7 +465,6 @@ def bot_logic():
 
                 elif spadla:
                     set_status("SPADŁA - ZWIJAM")
-                    # Próba szybkiego zwinięcia i sprawdzenia czy coś wzięło w międzyczasie
 
                     pyautogui.mouseDown(button='left')
                     pyautogui.keyDown('shift')
@@ -496,6 +485,7 @@ def bot_logic():
                         if template_zero is not None and \
                                 szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                             break
+
                         if not wait(0.05): break
 
                     if not running:
