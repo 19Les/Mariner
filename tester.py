@@ -18,41 +18,28 @@ import traceback
 # ==========================================
 # NAPRAWA BŁĘDU "TCL/TK NOT FOUND" (UNIWERSALNA)
 # ==========================================
-# Ten kod sam znajdzie biblioteki niezależnie od komputera (PC, Kuba itp.)
 def fix_tcl_paths():
-    # 1. Jeśli program działa jako EXE (u Kuby)
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
-        # Szukamy plików init.tcl i tk.tcl w folderach tymczasowych
         tcl_path = os.path.join(base_path, 'tcl')
         tk_path = os.path.join(base_path, 'tk')
-
-        # Jeśli standardowe ścieżki nie działają, szukamy głębiej
         if not os.path.exists(os.path.join(tcl_path, 'init.tcl')):
             for root, dirs, files in os.walk(base_path):
-                if 'init.tcl' in files:
-                    tcl_path = root
-                if 'tk.tcl' in files:
-                    tk_path = root
-
+                if 'init.tcl' in files: tcl_path = root
+                if 'tk.tcl' in files: tk_path = root
         os.environ['TCL_LIBRARY'] = tcl_path
         os.environ['TK_LIBRARY'] = tk_path
-
-    # 2. Jeśli program działa jako skrypt .py (u Ciebie na PC)
     else:
-        # Tu możesz zostawić swoje sztywne ścieżki, jeśli Python ich nie wykrywa automatycznie
-        # Ale zazwyczaj wystarczy wskazać folder instalacji Pythona:
         try:
             base_py = os.path.dirname(sys.executable)
             os.environ['TCL_LIBRARY'] = os.path.join(base_py, 'tcl', 'tcl8.6')
             os.environ['TK_LIBRARY'] = os.path.join(base_py, 'tcl', 'tk8.6')
         except:
-            # Fallback (Twoje ścieżki)
+            # Fallback
             os.environ['TCL_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tcl8.6'
             os.environ['TK_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tk8.6'
 
 
-# Uruchomienie naprawy PRZED importem tkinter
 fix_tcl_paths()
 
 import tkinter as tk
@@ -171,7 +158,7 @@ def set_status(text):
 
 
 # ==========================================
-# OBSŁUGA PAUZY (RĘCZNA)
+# OBSŁUGA PAUZY
 # ==========================================
 def obsluga_pauzy():
     global running
@@ -336,7 +323,6 @@ def bot_logic():
                     if kill_signal: os._exit(0)
                     obsluga_pauzy()
                     time.sleep(0.1)
-
                 if not ryba_znaleziona:
                     wymagany_rzut = True
                 continue
@@ -388,7 +374,7 @@ def bot_logic():
                     else:
                         wymagany_rzut = False
                         pyautogui.mouseDown(button='left')
-                        if not wait(0.5):
+                        if not wait(0.05):
                             pyautogui.mouseUp(button='left');
                             continue
                         pyautogui.mouseUp(button='left')
@@ -408,7 +394,6 @@ def bot_logic():
                     while time.time() < end_scan:
                         if not running: break
                         if obsluga_pauzy(): break
-
                         if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                             ryba_znaleziona = True
                             break
@@ -417,7 +402,7 @@ def bot_logic():
                     if not running: continue
 
             # ==========================
-            # 3. HOLOWANIE
+            # 3. HOLOWANIE (SZYBKA REAKCJA NA CZERWONE)
             # ==========================
             if ryba_znaleziona:
                 set_status(">>> HOLOWANIE <<<")
@@ -439,13 +424,51 @@ def bot_logic():
                     if obsluga_pauzy(): break
                     if not running: break
 
-                    # A. SPACJA (PRIORYTET)
+                    # --- PRIORYTET: NAPIĘCIE ---
+                    jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
+
+                    if jest_czerwono:
+                        set_status("NAPIĘCIE! (29)")
+
+                        # 1. Puszczamy zwijanie (najszybsza reakcja)
+                        if trzymamy_zwijanie:
+                            pyautogui.mouseUp(button='left')
+                            trzymamy_zwijanie = False
+
+                        # 2. Zbijamy hamulec (standardowe -3)
+                        if hamulec_zablokowany:
+                            pyautogui.scroll(-3)
+                            hamulec_zablokowany = False
+                            time.sleep(0.01)  # Mikropauza dla gry
+
+                        # Wracamy na początek pętli by jak najszybciej sprawdzić czy nadal jest czerwono
+                        continue
+
+                        # --- SYTUACJA STABILNA (ZIELONO) ---
+
+                    # 1. Powrót hamulca
+                    if not hamulec_zablokowany:
+                        set_status("POWRÓT HAMULCA")
+                        pyautogui.scroll(3)
+                        hamulec_zablokowany = True
+                        time.sleep(0.01)
+
+                    # 2. Wznowienie zwijania
+                    if not trzymamy_zwijanie:
+                        set_status("HOL (30)")
+                        pyautogui.mouseDown(button='left')
+                        pyautogui.keyDown('shift')
+                        trzymamy_zwijanie = True
+
+                    # --- WARUNKI KOŃCOWE ---
+
+                    # Spacja
                     if template_spacja is not None and \
                             szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'], prog=0.55)[0]:
                         sukces = True;
                         break
 
-                    # B. RYBA
+                    # Ryba
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
@@ -455,33 +478,8 @@ def bot_logic():
                         spadla = True;
                         break
 
-                    # C. NAPIĘCIE
-                    jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
-
-                    if jest_czerwono:
-                        set_status("NAPIĘCIE! (29)")
-
-                        if trzymamy_zwijanie:
-                            pyautogui.mouseUp(button='left')
-                            trzymamy_zwijanie = False
-
-                        if hamulec_zablokowany:
-                            pyautogui.scroll(-3)
-                            hamulec_zablokowany = False
-                            time.sleep(0.05)
-                    else:
-                        set_status("HOL (30)")
-                        if not hamulec_zablokowany:
-                            pyautogui.scroll(3)
-                            hamulec_zablokowany = True
-                            time.sleep(0.05)
-
-                        if not trzymamy_zwijanie:
-                            pyautogui.mouseDown(button='left')
-                            pyautogui.keyDown('shift')
-                            trzymamy_zwijanie = True
-
-                    if not wait(0.02): break
+                    # Minimalne opóźnienie dla CPU (bardzo szybka pętla)
+                    time.sleep(0.001)
 
                 resetuj_klawisze()
                 if not running: continue
@@ -517,7 +515,7 @@ def bot_logic():
                             break
 
                         if template_zero is not None and \
-                                szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
+                                szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.65)[0]:
                             break
 
                         if not wait(0.05): break
@@ -564,8 +562,10 @@ def press_4_task():
             time.sleep(0.1)
 
         if running:
-            pyautogui.press('4')
-            time.sleep(0.2)
+            for _ in range(5):
+                if not running: break
+                pyautogui.press('4')
+                time.sleep(0.25)
 
 
 # ==========================================
