@@ -14,25 +14,47 @@ import json
 import threading
 import traceback
 
-# ==========================================
-# KONFIGURACJA ŚRODOWISKA (NAPRAWA BŁĘDU INIT.TCL)
-# ==========================================
-# To jest ten fragment, który "był dobry".
-# Sprawdza czy program to EXE (frozen) czy skrypt Python.
-if getattr(sys, 'frozen', False):
-    # Jesteśmy w pliku .EXE (np. u Kuby)
-    base_path = sys._MEIPASS
-    os.environ['TCL_LIBRARY'] = os.path.join(base_path, 'tcl', 'tcl8.6')
-    os.environ['TK_LIBRARY'] = os.path.join(base_path, 'tcl', 'tk8.6')
-else:
-    # Jesteśmy w pliku .PY (u Ciebie)
-    # Automatycznie pobieramy ścieżkę do Twojego Pythona
-    python_path = os.path.dirname(sys.executable)
-    # Zazwyczaj tcl jest w folderze tcl wewnątrz katalogu Pythona
-    os.environ['TCL_LIBRARY'] = os.path.join(python_path, 'tcl', 'tcl8.6')
-    os.environ['TK_LIBRARY'] = os.path.join(python_path, 'tcl', 'tk8.6')
 
-# Dopiero teraz importujemy tkinter (kluczowe!)
+# ==========================================
+# NAPRAWA BŁĘDU "TCL/TK NOT FOUND" (UNIWERSALNA)
+# ==========================================
+# Ten kod sam znajdzie biblioteki niezależnie od komputera (PC, Kuba itp.)
+def fix_tcl_paths():
+    # 1. Jeśli program działa jako EXE (u Kuby)
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS
+        # Szukamy plików init.tcl i tk.tcl w folderach tymczasowych
+        tcl_path = os.path.join(base_path, 'tcl')
+        tk_path = os.path.join(base_path, 'tk')
+
+        # Jeśli standardowe ścieżki nie działają, szukamy głębiej
+        if not os.path.exists(os.path.join(tcl_path, 'init.tcl')):
+            for root, dirs, files in os.walk(base_path):
+                if 'init.tcl' in files:
+                    tcl_path = root
+                if 'tk.tcl' in files:
+                    tk_path = root
+
+        os.environ['TCL_LIBRARY'] = tcl_path
+        os.environ['TK_LIBRARY'] = tk_path
+
+    # 2. Jeśli program działa jako skrypt .py (u Ciebie na PC)
+    else:
+        # Tu możesz zostawić swoje sztywne ścieżki, jeśli Python ich nie wykrywa automatycznie
+        # Ale zazwyczaj wystarczy wskazać folder instalacji Pythona:
+        try:
+            base_py = os.path.dirname(sys.executable)
+            os.environ['TCL_LIBRARY'] = os.path.join(base_py, 'tcl', 'tcl8.6')
+            os.environ['TK_LIBRARY'] = os.path.join(base_py, 'tcl', 'tk8.6')
+        except:
+            # Fallback (Twoje ścieżki)
+            os.environ['TCL_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tcl8.6'
+            os.environ['TK_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tk8.6'
+
+
+# Uruchomienie naprawy PRZED importem tkinter
+fix_tcl_paths()
+
 import tkinter as tk
 from tkinter import ttk
 
@@ -149,11 +171,10 @@ def set_status(text):
 
 
 # ==========================================
-# OBSŁUGA PAUZY (RĘCZNA - NAPRAWA F8)
+# OBSŁUGA PAUZY (RĘCZNA)
 # ==========================================
 def obsluga_pauzy():
     global running
-    # Używamy is_pressed, bo działa nawet jak trzymasz inne klawisze (Shift+F8)
     if keyboard.is_pressed(KLAWISZ_START):
         resetuj_klawisze()
         running = not running
@@ -165,7 +186,6 @@ def obsluga_pauzy():
             zapisz_statystyki()
             winsound.Beep(400, 200)
 
-        # Debounce (czekamy aż puści klawisz)
         while keyboard.is_pressed(KLAWISZ_START):
             time.sleep(0.05)
         return True
@@ -173,7 +193,6 @@ def obsluga_pauzy():
 
 
 def wait(seconds):
-    """ Czeka, ale sprawdza F8 w każdej pętli """
     end_time = time.time() + seconds
     while time.time() < end_time:
         if kill_signal: os._exit(0)
@@ -309,17 +328,15 @@ def bot_logic():
         set_status(f"GOTOWY ({KLAWISZ_START})")
 
         while True:
-            # 1. Ręczne sprawdzenie pauzy (zamiast hotkeya)
             obsluga_pauzy()
 
             if not running:
                 resetuj_klawisze()
                 while not running:
                     if kill_signal: os._exit(0)
-                    obsluga_pauzy()  # Czekamy na F8
+                    obsluga_pauzy()
                     time.sleep(0.1)
 
-                # Po wznowieniu
                 if not ryba_znaleziona:
                     wymagany_rzut = True
                 continue
@@ -329,7 +346,7 @@ def bot_logic():
             # ==========================
             if not ryba_znaleziona:
 
-                # A. RZUT
+                # 1. RZUT
                 if wymagany_rzut:
                     set_status("RZUT")
                     pyautogui.mouseDown(button='left')
@@ -376,7 +393,7 @@ def bot_logic():
                             continue
                         pyautogui.mouseUp(button='left')
 
-                # B. JIGOWANIE
+                # 2. JIGOWANIE
                 if not ryba_znaleziona:
                     set_status("JIGOWANIE")
                     pyautogui.mouseDown(button='right')
@@ -400,7 +417,7 @@ def bot_logic():
                     if not running: continue
 
             # ==========================
-            # 3. HOLOWANIE (POPRAWIONE)
+            # 3. HOLOWANIE
             # ==========================
             if ryba_znaleziona:
                 set_status(">>> HOLOWANIE <<<")
@@ -428,13 +445,12 @@ def bot_logic():
                         sukces = True;
                         break
 
-                    # B. RYBA (CIERPLIWOŚĆ)
+                    # B. RYBA
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
                         licznik_znikniec = 0
 
-                        # Czekamy ok. 2-3 sekundy po zniknięciu zanim uznamy za porażkę
                     if licznik_znikniec > 60:
                         spadla = True;
                         break
@@ -444,6 +460,7 @@ def bot_logic():
 
                     if jest_czerwono:
                         set_status("NAPIĘCIE! (29)")
+
                         if trzymamy_zwijanie:
                             pyautogui.mouseUp(button='left')
                             trzymamy_zwijanie = False
@@ -451,13 +468,13 @@ def bot_logic():
                         if hamulec_zablokowany:
                             pyautogui.scroll(-3)
                             hamulec_zablokowany = False
-                            time.sleep(0.05)  # Pauza dla gry
+                            time.sleep(0.05)
                     else:
                         set_status("HOL (30)")
                         if not hamulec_zablokowany:
                             pyautogui.scroll(3)
                             hamulec_zablokowany = True
-                            time.sleep(0.05)  # Pauza dla gry
+                            time.sleep(0.05)
 
                         if not trzymamy_zwijanie:
                             pyautogui.mouseDown(button='left')
