@@ -295,39 +295,35 @@ def bot_logic():
         keyboard.add_hotkey(KLAWISZ_KONIEC, kill_bot)
 
         wymagany_rzut = True
-        ryba_znaleziona = False  # Stan ryby przeniesiony na zewnątrz pętli
+        ryba_znaleziona = False
         set_status(f"GOTOWY ({KLAWISZ_START})")
 
         while True:
             # Obsługa Pauzy (F8)
             if not running:
-                # Jeśli zatrzymano, upewnij się, że klawisze są puszczone
                 resetuj_klawisze()
                 while not running:
                     if kill_signal: os._exit(0)
                     time.sleep(0.1)
 
-                # Po wznowieniu:
-                # Jeśli nie mieliśmy ryby, resetujemy rzut.
-                # Jeśli mieliśmy rybę (ryba_znaleziona=True), kontynuujemy holowanie!
+                # Po wznowieniu
                 if not ryba_znaleziona:
                     wymagany_rzut = True
                 continue
 
             # =================================================================
-            # LOGIKA SKIPOWANIA: Jeśli wykryto rybę (np. ponowny atak),
-            # pomijamy Rzut i Jigowanie, idziemy prosto do Holu.
+            # LOGIKA GŁÓWNA
             # =================================================================
             if not ryba_znaleziona:
 
-                # ========================
+                # ---------------------
                 # FAZA 1: RZUT
-                # ========================
+                # ---------------------
                 if wymagany_rzut:
                     set_status("RZUT")
 
                     pyautogui.mouseDown(button='left')
-                    if not wait(random.uniform(0.08, 0.12)): continue  # wait() zamiast sleep()
+                    if not wait(random.uniform(0.08, 0.12)): continue
                     pyautogui.mouseUp(button='left')
 
                     start_opadu = time.time()
@@ -339,7 +335,6 @@ def bot_logic():
                         if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                             set_status("BRANIE (OPAD)!")
                             przerwano_opad = True
-                            # Tutaj ustawiamy flagę ryby, żeby w następnym obiegu pętli wiedział
                             ryba_znaleziona = True
                             break
 
@@ -354,29 +349,24 @@ def bot_logic():
 
                     if not running: continue
 
-                    # Jeśli wykryto rybę w opadzie, przerywamy rzut i lecimy do holu
                     if ryba_znaleziona:
                         wymagany_rzut = False
-                        # Zamykamy kabłąk szybko
                         set_status("ZAMYKANIE KABŁĄKA!")
                         pyautogui.mouseDown(button='left')
                         if not wait(0.1): continue
                         pyautogui.mouseUp(button='left')
                         if not wait(0.3): continue
-                        # Skok do holu (bo ryba_znaleziona=True)
                     else:
                         wymagany_rzut = False
-                        # Normalne zamknięcie kabłąka
                         pyautogui.mouseDown(button='left')
                         if not wait(0.5):
                             pyautogui.mouseUp(button='left')
                             continue
                         pyautogui.mouseUp(button='left')
 
-                # ========================
+                # ---------------------
                 # FAZA 2: JIGOWANIE
-                # (Tylko jeśli nie ma jeszcze ryby)
-                # ========================
+                # ---------------------
                 if not ryba_znaleziona:
                     set_status("JIGOWANIE")
                     pyautogui.mouseDown(button='right')
@@ -408,7 +398,6 @@ def bot_logic():
                 pyautogui.mouseDown(button='left')
                 pyautogui.mouseDown(button='right')
 
-                # Zmienne holu
                 trzymamy_zwijanie = False
                 hamulec_zablokowany = False
 
@@ -420,57 +409,62 @@ def bot_logic():
                 while time.time() - start_holu < MAX_CZAS_HOLU:
                     if not running: break
 
-                    # A. Ryba?
+                    # ---------------------------------------------------------
+                    # 1. NAJPIERW SPRAWDZAMY SPACJĘ (SUKCES)
+                    # Ma priorytet nad zniknięciem ryby
+                    # ---------------------------------------------------------
+                    if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[0]:
+                        sukces = True;
+                        break
+
+                    # ---------------------------------------------------------
+                    # 2. POTEM SPRAWDZAMY CZY IKONA RYBY ZNIKNĘŁA
+                    # ---------------------------------------------------------
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
                         licznik_znikniec = 0
 
-                    if licznik_znikniec > 12: spadla = True; break
-
-                    # B. Spacja?
-                    if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[0]:
-                        sukces = True;
+                    # ZWIĘKSZONO LIMIT: z 12 na 40 (ok. 2 sekundy tolerancji)
+                    # To pozwala rybie "wisieć w powietrzu" zanim pojawi się spacja
+                    if licznik_znikniec > 40:
+                        spadla = True;
                         break
 
-                    # C. Napięcie
+                    # ---------------------------------------------------------
+                    # 3. KONTROLA NAPIĘCIA
+                    # ---------------------------------------------------------
                     jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
 
                     if jest_czerwono:
                         set_status("NAPIĘCIE! (29)")
 
-                        # PRIORYTET: Puszczamy zwijanie
                         if trzymamy_zwijanie:
                             pyautogui.mouseUp(button='left')
                             trzymamy_zwijanie = False
 
-                        # Zbijamy hamulec agresywniej
                         if hamulec_zablokowany:
                             pyautogui.scroll(-3)
                             hamulec_zablokowany = False
 
                     else:
                         set_status("HOL (30)")
-                        # Blokujemy hamulec
                         if not hamulec_zablokowany:
                             pyautogui.scroll(3)
                             hamulec_zablokowany = True
 
-                        # Wznawiamy zwijanie
                         if not trzymamy_zwijanie:
                             pyautogui.mouseDown(button='left')
                             pyautogui.keyDown('shift')
                             trzymamy_zwijanie = True
 
-                    if not wait(0.02): break  # Krótki wait dla responsywności
+                    if not wait(0.02): break
 
-                # Koniec pętli holu (sukces, spadła lub pauza)
                 resetuj_klawisze()
                 if not running: continue
 
                 if sukces:
                     set_status("ZŁOWIONO!")
-                    # Resetujemy flagę ryby - sukces!
                     ryba_znaleziona = False
                     if not wait(1.0): continue
                     pyautogui.press('space')
@@ -482,10 +476,7 @@ def bot_logic():
 
                 elif spadla:
                     set_status("SPADŁA - ZWIJAM")
-                    # Ryba spadła, ale może wziąć nowa. Na razie nie resetujemy flagi ryby,
-                    # zrobimy to dopiero jak skończymy zwijać i nic nie weźmie.
 
-                    # Szybkie zwijanie pustego
                     pyautogui.mouseDown(button='left')
                     pyautogui.keyDown('shift')
                     pyautogui.mouseUp(button='right')
@@ -496,10 +487,8 @@ def bot_logic():
                     while time.time() - start_zwijania < 45:
                         if not running: break
 
-                        # SPRAWDZAMY CZY NOWA RYBA WZIĘŁA
                         if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                             set_status("PONOWNY ATAK!")
-                            # Ważne: Zostawiamy ryba_znaleziona = True
                             nowe_branie = True
                             break
 
@@ -509,31 +498,26 @@ def bot_logic():
 
                         if not wait(0.05): break
 
-                    # Jeśli user zatrzymał w trakcie zwijania
                     if not running:
                         resetuj_klawisze()
                         continue
 
                     if nowe_branie:
-                        # Wracamy na początek pętli WHILE TRUE.
-                        # Ponieważ ryba_znaleziona jest TRUE, pominiemy rzut/jig i wejdziemy prosto w HOL.
-                        resetuj_klawisze()  # Dla bezpieczeństwa, hol sam sobie wciśnie co trzeba
+                        # Ryba znaleziona = True (zostaje), resetujemy klawisze i wracamy do pętli
+                        resetuj_klawisze()
                         continue
 
-                        # Jeśli dotarliśmy tutaj, to ryba spadła i nic nowego nie wzięło
                     ryba_znaleziona = False
                     resetuj_klawisze()
                     if not wait(1.5): continue
                     wymagany_rzut = True
 
             else:
-                # Idle loop gdy nie ma ryby i czekamy na ticki
                 if not wait(0.05): continue
 
     except Exception as e:
         print(f"BŁĄD: {e}")
         traceback.print_exc()
-
 
 def press_4_after_5_minutes_task():
     while True:
