@@ -382,13 +382,13 @@ def bot_logic():
                         wymagany_rzut = False
                         set_status("ZAMYKANIE KABŁĄKA!")
                         pyautogui.mouseDown(button='left')
-                        if not wait(0.01): continue
+                        if not wait(0.1): continue
                         pyautogui.mouseUp(button='left')
                         if not wait(0.3): continue
                     else:
                         wymagany_rzut = False
                         pyautogui.mouseDown(button='left')
-                        if not wait(0.5):
+                        if not wait(0.05):
                             pyautogui.mouseUp(button='left');
                             continue
                         pyautogui.mouseUp(button='left')
