@@ -18,41 +18,28 @@ import traceback
 # ==========================================
 # NAPRAWA BŁĘDU "TCL/TK NOT FOUND" (UNIWERSALNA)
 # ==========================================
-# Ten kod sam znajdzie biblioteki niezależnie od komputera (PC, Kuba itp.)
 def fix_tcl_paths():
-    # 1. Jeśli program działa jako EXE (u Kuby)
     if getattr(sys, 'frozen', False):
         base_path = sys._MEIPASS
-        # Szukamy plików init.tcl i tk.tcl w folderach tymczasowych
         tcl_path = os.path.join(base_path, 'tcl')
         tk_path = os.path.join(base_path, 'tk')
-
-        # Jeśli standardowe ścieżki nie działają, szukamy głębiej
         if not os.path.exists(os.path.join(tcl_path, 'init.tcl')):
             for root, dirs, files in os.walk(base_path):
-                if 'init.tcl' in files:
-                    tcl_path = root
-                if 'tk.tcl' in files:
-                    tk_path = root
-
+                if 'init.tcl' in files: tcl_path = root
+                if 'tk.tcl' in files: tk_path = root
         os.environ['TCL_LIBRARY'] = tcl_path
         os.environ['TK_LIBRARY'] = tk_path
-
-    # 2. Jeśli program działa jako skrypt .py (u Ciebie na PC)
     else:
-        # Tu możesz zostawić swoje sztywne ścieżki, jeśli Python ich nie wykrywa automatycznie
-        # Ale zazwyczaj wystarczy wskazać folder instalacji Pythona:
         try:
             base_py = os.path.dirname(sys.executable)
             os.environ['TCL_LIBRARY'] = os.path.join(base_py, 'tcl', 'tcl8.6')
             os.environ['TK_LIBRARY'] = os.path.join(base_py, 'tcl', 'tk8.6')
         except:
-            # Fallback (Twoje ścieżki)
+            # Fallback dla specyficznej konfiguracji
             os.environ['TCL_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tcl8.6'
             os.environ['TK_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tk8.6'
 
 
-# Uruchomienie naprawy PRZED importem tkinter
 fix_tcl_paths()
 
 import tkinter as tk
@@ -388,7 +375,7 @@ def bot_logic():
                     else:
                         wymagany_rzut = False
                         pyautogui.mouseDown(button='left')
-                        if not wait(0.05):
+                        if not wait(0.5):
                             pyautogui.mouseUp(button='left');
                             continue
                         pyautogui.mouseUp(button='left')
@@ -460,7 +447,6 @@ def bot_logic():
 
                     if jest_czerwono:
                         set_status("NAPIĘCIE! (29)")
-
                         if trzymamy_zwijanie:
                             pyautogui.mouseUp(button='left')
                             trzymamy_zwijanie = False
@@ -516,8 +502,9 @@ def bot_logic():
                             nowe_branie = True
                             break
 
+                        # --- ZMIANA: Zmniejszono próg wykrywania "gotowy" (prog=0.65) ---
                         if template_zero is not None and \
-                                szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
+                                szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.65)[0]:
                             break
 
                         if not wait(0.05): break
@@ -530,6 +517,7 @@ def bot_logic():
                         resetuj_klawisze()
                         continue
 
+                        # --- ZMIANA: Po spadnięciu i zwinięciu na pewno rzucamy ---
                     ryba_znaleziona = False
                     resetuj_klawisze()
                     if not wait(1.5): continue
@@ -564,8 +552,11 @@ def press_4_task():
             time.sleep(0.1)
 
         if running:
-            pyautogui.press('4')
-            time.sleep(0.2)
+            # --- ZMIANA: 5 KLIKNIĘĆ KLAWISZA 4 ---
+            for _ in range(5):
+                if not running: break
+                pyautogui.press('4')
+                time.sleep(0.25)
 
 
 # ==========================================
