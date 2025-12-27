@@ -69,7 +69,7 @@ KONFIGURACJE = {
         'spacja_img': resource_path('space2.png'), 'spacja_reg': (789, 979, 82, 17),
         'zero_img': resource_path('gotowy.png'), 'zero_reg': (606, 1027, 47, 12),
         'dno_img': resource_path('dno.png'), 'dno_reg': (536, 1024, 30, 12),
-        'tension_reg': (943, 1047, 10, 11)
+        'tension_reg': (950, 1047, 10, 11)
     },
     '2K': {
         'ryba_img': resource_path('indicator.png'), 'ryba_reg': (855, 1369, 30, 30),
