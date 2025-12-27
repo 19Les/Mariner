@@ -15,20 +15,24 @@ import threading
 import traceback
 
 # ==========================================
-# KONFIGURACJA ŚRODOWISKA (AUTOMATYCZNA)
+# KONFIGURACJA ŚRODOWISKA (NAPRAWA BŁĘDU INIT.TCL)
 # ==========================================
-# To naprawia błąd TCL/TK na każdym komputerze (PC, Kuba, Admin itd.)
+# To jest ten fragment, który "był dobry".
+# Sprawdza czy program to EXE (frozen) czy skrypt Python.
 if getattr(sys, 'frozen', False):
-    # Jeśli uruchamiamy jako EXE
+    # Jesteśmy w pliku .EXE (np. u Kuby)
     base_path = sys._MEIPASS
     os.environ['TCL_LIBRARY'] = os.path.join(base_path, 'tcl', 'tcl8.6')
     os.environ['TK_LIBRARY'] = os.path.join(base_path, 'tcl', 'tk8.6')
 else:
-    # Jeśli uruchamiamy jako skrypt .py (Twój przypadek teraz)
+    # Jesteśmy w pliku .PY (u Ciebie)
+    # Automatycznie pobieramy ścieżkę do Twojego Pythona
     python_path = os.path.dirname(sys.executable)
+    # Zazwyczaj tcl jest w folderze tcl wewnątrz katalogu Pythona
     os.environ['TCL_LIBRARY'] = os.path.join(python_path, 'tcl', 'tcl8.6')
     os.environ['TK_LIBRARY'] = os.path.join(python_path, 'tcl', 'tk8.6')
 
+# Dopiero teraz importujemy tkinter (kluczowe!)
 import tkinter as tk
 from tkinter import ttk
 
@@ -145,10 +149,11 @@ def set_status(text):
 
 
 # ==========================================
-# OBSŁUGA PAUZY (RĘCZNA)
+# OBSŁUGA PAUZY (RĘCZNA - NAPRAWA F8)
 # ==========================================
 def obsluga_pauzy():
     global running
+    # Używamy is_pressed, bo działa nawet jak trzymasz inne klawisze (Shift+F8)
     if keyboard.is_pressed(KLAWISZ_START):
         resetuj_klawisze()
         running = not running
@@ -160,7 +165,7 @@ def obsluga_pauzy():
             zapisz_statystyki()
             winsound.Beep(400, 200)
 
-        # Czekaj aż puści klawisz
+        # Debounce (czekamy aż puści klawisz)
         while keyboard.is_pressed(KLAWISZ_START):
             time.sleep(0.05)
         return True
@@ -168,6 +173,7 @@ def obsluga_pauzy():
 
 
 def wait(seconds):
+    """ Czeka, ale sprawdza F8 w każdej pętli """
     end_time = time.time() + seconds
     while time.time() < end_time:
         if kill_signal: os._exit(0)
@@ -303,15 +309,17 @@ def bot_logic():
         set_status(f"GOTOWY ({KLAWISZ_START})")
 
         while True:
+            # 1. Ręczne sprawdzenie pauzy (zamiast hotkeya)
             obsluga_pauzy()
 
             if not running:
                 resetuj_klawisze()
                 while not running:
                     if kill_signal: os._exit(0)
-                    obsluga_pauzy()
+                    obsluga_pauzy()  # Czekamy na F8
                     time.sleep(0.1)
 
+                # Po wznowieniu
                 if not ryba_znaleziona:
                     wymagany_rzut = True
                 continue
@@ -321,7 +329,7 @@ def bot_logic():
             # ==========================
             if not ryba_znaleziona:
 
-                # 1. RZUT
+                # A. RZUT
                 if wymagany_rzut:
                     set_status("RZUT")
                     pyautogui.mouseDown(button='left')
@@ -368,7 +376,7 @@ def bot_logic():
                             continue
                         pyautogui.mouseUp(button='left')
 
-                # 2. JIGOWANIE
+                # B. JIGOWANIE
                 if not ryba_znaleziona:
                     set_status("JIGOWANIE")
                     pyautogui.mouseDown(button='right')
@@ -392,7 +400,7 @@ def bot_logic():
                     if not running: continue
 
             # ==========================
-            # 3. HOLOWANIE
+            # 3. HOLOWANIE (POPRAWIONE)
             # ==========================
             if ryba_znaleziona:
                 set_status(">>> HOLOWANIE <<<")
@@ -414,20 +422,24 @@ def bot_logic():
                     if obsluga_pauzy(): break
                     if not running: break
 
+                    # A. SPACJA (PRIORYTET)
                     if template_spacja is not None and \
                             szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'], prog=0.55)[0]:
                         sukces = True;
                         break
 
+                    # B. RYBA (CIERPLIWOŚĆ)
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
                         licznik_znikniec = 0
 
+                        # Czekamy ok. 2-3 sekundy po zniknięciu zanim uznamy za porażkę
                     if licznik_znikniec > 60:
                         spadla = True;
                         break
 
+                    # C. NAPIĘCIE
                     jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
 
                     if jest_czerwono:
@@ -435,16 +447,18 @@ def bot_logic():
                         if trzymamy_zwijanie:
                             pyautogui.mouseUp(button='left')
                             trzymamy_zwijanie = False
+
                         if hamulec_zablokowany:
                             pyautogui.scroll(-3)
                             hamulec_zablokowany = False
-                            time.sleep(0.05)
+                            time.sleep(0.05)  # Pauza dla gry
                     else:
                         set_status("HOL (30)")
                         if not hamulec_zablokowany:
                             pyautogui.scroll(3)
                             hamulec_zablokowany = True
-                            time.sleep(0.05)
+                            time.sleep(0.05)  # Pauza dla gry
+
                         if not trzymamy_zwijanie:
                             pyautogui.mouseDown(button='left')
                             pyautogui.keyDown('shift')
