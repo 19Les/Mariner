@@ -11,66 +11,10 @@ import winsound
 import os
 import sys
 import json
-os.environ['TCL_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tcl8.6'
-os.environ['TK_LIBRARY'] = r'C:\Users\PC\AppData\Local\Programs\Python\Python313\tcl\tk8.6'
-import threading
-import traceback
-
-
-# --- TUTAJ ZMIANA: Zaawansowana naprawa ścieżek TCL/TK ---
-def setup_tkinter_environment():
-    """
-    Szuka init.tcl i tk.tcl w folderze tymczasowym (_MEIPASS)
-    i ustawia zmienne środowiskowe dynamicznie.
-    """
-    if getattr(sys, 'frozen', False):
-        base_path = sys._MEIPASS
-
-        # 1. Usuń stare zmienne, żeby nie kolidowały z systemem
-        os.environ.pop('TCL_LIBRARY', None)
-        os.environ.pop('TK_LIBRARY', None)
-
-        tcl_path = None
-        tk_path = None
-
-        # 2. Przeszukaj rekurencyjnie folder tymczasowy w poszukiwaniu init.tcl
-        for root, dirs, files in os.walk(base_path):
-            if 'init.tcl' in files:
-                tcl_path = root
-                print(f"Znaleziono TCL w: {tcl_path}")
-            if 'tk.tcl' in files:
-                tk_path = root
-                print(f"Znaleziono TK w: {tk_path}")
-
-            if tcl_path and tk_path:
-                break
-
-        # 3. Jeśli nie znaleziono przez walk, spróbuj standardowych ścieżek PyInstallera
-        if not tcl_path:
-            potential_tcl = os.path.join(base_path, 'tcl')
-            if os.path.exists(potential_tcl):
-                tcl_path = potential_tcl
-
-        if not tk_path:
-            potential_tk = os.path.join(base_path, 'tk')
-            if os.path.exists(potential_tk):
-                tk_path = potential_tk
-
-        # 4. Ustaw zmienne środowiskowe
-        if tcl_path:
-            os.environ['TCL_LIBRARY'] = tcl_path
-        if tk_path:
-            os.environ['TK_LIBRARY'] = tk_path
-
-        # Debugowanie (opcjonalne, zobaczysz to w konsoli jeśli uruchomisz bez --noconsole)
-        if not tcl_path or not tk_path:
-            print("OSTRZEŻENIE: Nie udało się automatycznie znaleźć ścieżek TCL/TK wewnątrz EXE.")
-
-
-setup_tkinter_environment()
-
 import tkinter as tk
 from tkinter import ttk
+import threading
+import traceback
 
 # ==========================================
 # KONFIGURACJA GLOBALNA
@@ -83,35 +27,26 @@ USER_SETTINGS = {
 
 
 def resource_path(relative_path):
-    """ Uzyskaj bezwzględną ścieżkę do zasobu, działa dla dev i dla PyInstaller """
     try:
-        # PyInstaller tworzy folder tymczasowy w _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-# ... existing code ...
-def show_launcher():
-    launcher = tk.Tk()
-    launcher.title("Konfiguracja")
-
-
-# ... existing code ...
 
 KONFIGURACJE = {
     'FHD': {
         'ryba_img': resource_path('ind2.png'), 'ryba_reg': (534, 1008, 32, 32),
-        'spacja_img': resource_path('space2.png'), 'spacja_reg': (789, 979, 82, 17),
+        'spacja_img': resource_path('space2.png'), 'spacja_reg': (798, 973, 65, 16),
         'zero_img': resource_path('gotowy.png'), 'zero_reg': (606, 1027, 47, 12),
         'dno_img': resource_path('dno.png'), 'dno_reg': (536, 1024, 30, 12),
         'tension_reg': (943, 1047, 10, 11)
     },
     '2K': {
         'ryba_img': resource_path('indicator.png'), 'ryba_reg': (855, 1369, 30, 30),
-        'spacja_img': resource_path('space.png'), 'spacja_reg': (1109, 1289, 82, 17),
-        'zero_img': resource_path('ready.png'), 'zero_reg': (926, 1388, 46, 7),
-        'dno_img': resource_path('movement.png'), 'dno_reg': (856, 1384, 30, 11),
+        'spacja_img': resource_path('space.png'), 'spacja_reg': (1120, 1227, 62, 16),
+        'zero_img': resource_path('ready.png'), 'zero_reg': (896, 1387, 34, 9),
+        'dno_img': resource_path('movement.png'), 'dno_reg': (856, 1384, 65, 12),
         'tension_reg': (933, 1407, 10, 11)
     }
 }
@@ -149,14 +84,15 @@ lbl_status = None
 # OBSŁUGA KLAWISZY (ASYNCHRONICZNA)
 # ==========================================
 def toggle_reset():
+    """Tylko przełącza flagę, nie dotyka pyautogui (dla bezpieczeństwa wątków)"""
     global running
-    resetuj_klawisze()
     running = not running
+    # Dźwięki są OK, ale resetowanie klawiszy robimy w głównym wątku
     if running:
         set_status("START")
         winsound.Beep(600, 200)
     else:
-        set_status("RESET")
+        set_status("PAUZA")
         zapisz_statystyki()
         winsound.Beep(400, 200)
 
@@ -165,7 +101,11 @@ def kill_bot():
     global kill_signal
     print("\n!!! KILL SWITCH (F12) !!!")
     kill_signal = True
-    resetuj_klawisze()
+    # Tutaj reset jest konieczny przed zabiciem
+    try:
+        resetuj_klawisze()
+    except:
+        pass
     zapisz_statystyki()
     winsound.Beep(200, 500)
     os._exit(0)
@@ -181,7 +121,6 @@ def resetuj_klawisze():
 # NARZĘDZIA SYSTEMOWE I POMOCNICZE
 # ==========================================
 def format_time(seconds):
-    """Zamienia sekundy na format HH:MM:SS"""
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
@@ -251,6 +190,7 @@ def czy_jest_czerwone(region):
     try:
         img_bgr = pobierz_obraz_z_ekranu(region, gray=False)
         blue, green, red = np.average(np.average(img_bgr, axis=0), axis=0)
+        # Podbiłem trochę próg detekcji czerwonego dla pewności
         if red > 140 and green < 100 and blue < 100: return True
         return False
     except:
@@ -263,14 +203,18 @@ def set_status(text):
 
 
 # ==========================================
-# SMART WAIT
+# SMART WAIT (KLUCZ DO RESPONSYWNOŚCI F8)
 # ==========================================
 def wait(seconds):
+    """
+    Czeka zadaną ilość czasu, ale przerywa natychmiast,
+    gdy running zmieni się na False lub kill_signal na True.
+    """
     end_time = time.time() + seconds
     while time.time() < end_time:
         if kill_signal: os._exit(0)
         if not running: return False
-        time.sleep(0.01)
+        time.sleep(0.01)  # Krótkie próbkowanie (10ms)
     return True
 
 
@@ -294,11 +238,9 @@ def show_launcher():
     var_time = tk.StringVar(value='20')
 
     tk.Label(launcher, text="MARINER SETUP", font=("Segoe UI", 16, "bold"), bg='#1a1b26', fg='#7aa2f7').pack(pady=15)
-
     tk.Label(launcher, text="Rozdzielczość:", bg='#1a1b26', fg='#a9b1d6').pack(anchor='w', padx=20)
     ttk.Radiobutton(launcher, text="FHD (1920x1080)", variable=var_res, value='FHD').pack(anchor='w', padx=30)
     ttk.Radiobutton(launcher, text="2K (2560x1440)", variable=var_res, value='2K').pack(anchor='w', padx=30)
-
     tk.Label(launcher, text="", bg='#1a1b26').pack()
     tk.Label(launcher, text="Tryb opadania:", bg='#1a1b26', fg='#a9b1d6').pack(anchor='w', padx=20)
     ttk.Radiobutton(launcher, text="Czasowy (Stały)", variable=var_mode, value='CZAS').pack(anchor='w', padx=30)
@@ -353,82 +295,107 @@ def bot_logic():
         keyboard.add_hotkey(KLAWISZ_KONIEC, kill_bot)
 
         wymagany_rzut = True
+        ryba_znaleziona = False  # Stan ryby przeniesiony na zewnątrz pętli
         set_status(f"GOTOWY ({KLAWISZ_START})")
 
         while True:
+            # Obsługa Pauzy (F8)
             if not running:
-                wymagany_rzut = True
+                # Jeśli zatrzymano, upewnij się, że klawisze są puszczone
+                resetuj_klawisze()
                 while not running:
                     if kill_signal: os._exit(0)
-                    time.sleep(0.05)
+                    time.sleep(0.1)
+
+                # Po wznowieniu:
+                # Jeśli nie mieliśmy ryby, resetujemy rzut.
+                # Jeśli mieliśmy rybę (ryba_znaleziona=True), kontynuujemy holowanie!
+                if not ryba_znaleziona:
+                    wymagany_rzut = True
                 continue
 
-            # ========================
-            # FAZA 1: RZUT
-            # ========================
-            if wymagany_rzut:
-                set_status("RZUT")
+            # =================================================================
+            # LOGIKA SKIPOWANIA: Jeśli wykryto rybę (np. ponowny atak),
+            # pomijamy Rzut i Jigowanie, idziemy prosto do Holu.
+            # =================================================================
+            if not ryba_znaleziona:
 
-                pyautogui.mouseDown(button='left')
-                if not wait(random.uniform(0.08, 0.12)):
-                    pyautogui.mouseUp(button='left');
-                    continue
-                pyautogui.mouseUp(button='left')
+                # ========================
+                # FAZA 1: RZUT
+                # ========================
+                if wymagany_rzut:
+                    set_status("RZUT")
 
-                start_opadu = time.time()
-                przerwano_opad = False
-                set_status("OPADANIE...")
-
-                while True:
-                    if not running: break
-                    if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
-                        set_status("BRANIE (OPAD)!")
-                        przerwano_opad = True
-                        break
-                    teraz = time.time()
-                    if tryb_dno and template_dno is not None:
-                        if szukaj_wzorca(template_dno, ACTIVE_CONFIG['dno_reg'], prog=0.7)[0]: break
-                        if teraz - start_opadu > TIMEOUT_OPADANIA: break
-                    else:
-                        if teraz - start_opadu > czas_opadu: break
-                    if not wait(random.uniform(0.015, 0.025)): break
-
-                if not running: continue
-
-                wymagany_rzut = False
-
-                if not przerwano_opad:
                     pyautogui.mouseDown(button='left')
-                    pyautogui.mouseUp(button='left');
-                else:
-                    set_status("ZAMYKANIE KABŁĄKA!")
-                    pyautogui.mouseDown(button='left')
-                    if not wait(random.uniform(0.08, 0.12)): continue
+                    if not wait(random.uniform(0.08, 0.12)): continue  # wait() zamiast sleep()
                     pyautogui.mouseUp(button='left')
-                    if not wait(random.uniform(0.25, 0.35)): continue
 
-            # ========================
-            # FAZA 2: JIGOWANIE
-            # ========================
-            set_status("JIGOWANIE")
-            pyautogui.mouseDown(button='right')
-            if not wait(random.uniform(0.5, 0.8)):
-                pyautogui.mouseUp(button='right');
-                continue
-            pyautogui.mouseUp(button='right')
+                    start_opadu = time.time()
+                    przerwano_opad = False
+                    set_status("OPADANIE...")
 
-            start_skan = time.time()
-            ryba_znaleziona = False
-            end_scan = start_skan + random.uniform(1.8, 2.2)
+                    while True:
+                        if not running: break
+                        if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
+                            set_status("BRANIE (OPAD)!")
+                            przerwano_opad = True
+                            # Tutaj ustawiamy flagę ryby, żeby w następnym obiegu pętli wiedział
+                            ryba_znaleziona = True
+                            break
 
-            while time.time() < end_scan:
-                if not running: break
-                if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
-                    ryba_znaleziona = True
-                    break
-                if not wait(random.uniform(0.04, 0.06)): break
+                        teraz = time.time()
+                        if tryb_dno and template_dno is not None:
+                            if szukaj_wzorca(template_dno, ACTIVE_CONFIG['dno_reg'], prog=0.7)[0]: break
+                            if teraz - start_opadu > TIMEOUT_OPADANIA: break
+                        else:
+                            if teraz - start_opadu > czas_opadu: break
 
-            if not running: continue
+                        if not wait(0.02): break
+
+                    if not running: continue
+
+                    # Jeśli wykryto rybę w opadzie, przerywamy rzut i lecimy do holu
+                    if ryba_znaleziona:
+                        wymagany_rzut = False
+                        # Zamykamy kabłąk szybko
+                        set_status("ZAMYKANIE KABŁĄKA!")
+                        pyautogui.mouseDown(button='left')
+                        if not wait(0.1): continue
+                        pyautogui.mouseUp(button='left')
+                        if not wait(0.3): continue
+                        # Skok do holu (bo ryba_znaleziona=True)
+                    else:
+                        wymagany_rzut = False
+                        # Normalne zamknięcie kabłąka
+                        pyautogui.mouseDown(button='left')
+                        if not wait(0.5):
+                            pyautogui.mouseUp(button='left')
+                            continue
+                        pyautogui.mouseUp(button='left')
+
+                # ========================
+                # FAZA 2: JIGOWANIE
+                # (Tylko jeśli nie ma jeszcze ryby)
+                # ========================
+                if not ryba_znaleziona:
+                    set_status("JIGOWANIE")
+                    pyautogui.mouseDown(button='right')
+                    if not wait(random.uniform(0.5, 0.8)):
+                        pyautogui.mouseUp(button='right');
+                        continue
+                    pyautogui.mouseUp(button='right')
+
+                    start_skan = time.time()
+                    end_scan = start_skan + random.uniform(1.8, 2.2)
+
+                    while time.time() < end_scan:
+                        if not running: break
+                        if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
+                            ryba_znaleziona = True
+                            break
+                        if not wait(0.05): break
+
+                    if not running: continue
 
             # ========================
             # FAZA 3: HOLOWANIE
@@ -441,15 +408,19 @@ def bot_logic():
                 pyautogui.mouseDown(button='left')
                 pyautogui.mouseDown(button='right')
 
+                # Zmienne holu
+                trzymamy_zwijanie = False
+                hamulec_zablokowany = False
+
                 start_holu = time.time()
                 sukces = False
                 spadla = False
                 licznik_znikniec = 0
-                byl_czerwony = False
 
                 while time.time() - start_holu < MAX_CZAS_HOLU:
                     if not running: break
 
+                    # A. Ryba?
                     if not szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                         licznik_znikniec += 1
                     else:
@@ -457,40 +428,64 @@ def bot_logic():
 
                     if licznik_znikniec > 12: spadla = True; break
 
+                    # B. Spacja?
                     if template_spacja is not None and szukaj_wzorca(template_spacja, ACTIVE_CONFIG['spacja_reg'])[0]:
                         sukces = True;
                         break
 
+                    # C. Napięcie
                     jest_czerwono = czy_jest_czerwone(ACTIVE_CONFIG['tension_reg'])
 
                     if jest_czerwono:
                         set_status("NAPIĘCIE! (29)")
-                        pyautogui.scroll(-1)
-                        byl_czerwony = True
+
+                        # PRIORYTET: Puszczamy zwijanie
+                        if trzymamy_zwijanie:
+                            pyautogui.mouseUp(button='left')
+                            trzymamy_zwijanie = False
+
+                        # Zbijamy hamulec agresywniej
+                        if hamulec_zablokowany:
+                            pyautogui.scroll(-3)
+                            hamulec_zablokowany = False
+
                     else:
                         set_status("HOL (30)")
-                        if byl_czerwony:
-                            pyautogui.scroll(1)
-                            byl_czerwony = False
+                        # Blokujemy hamulec
+                        if not hamulec_zablokowany:
+                            pyautogui.scroll(3)
+                            hamulec_zablokowany = True
 
-                    if not wait(random.uniform(0.04, 0.06)): break
+                        # Wznawiamy zwijanie
+                        if not trzymamy_zwijanie:
+                            pyautogui.mouseDown(button='left')
+                            pyautogui.keyDown('shift')
+                            trzymamy_zwijanie = True
 
+                    if not wait(0.02): break  # Krótki wait dla responsywności
+
+                # Koniec pętli holu (sukces, spadła lub pauza)
                 resetuj_klawisze()
                 if not running: continue
 
                 if sukces:
                     set_status("ZŁOWIONO!")
-                    if not wait(random.uniform(0.9, 1.1)): continue
+                    # Resetujemy flagę ryby - sukces!
+                    ryba_znaleziona = False
+                    if not wait(1.0): continue
                     pyautogui.press('space')
                     SESSION_COUNTER += 1;
                     TOTAL_COUNTER += 1
                     zapisz_statystyki()
-                    if not wait(random.uniform(1.8, 2.2)): continue
+                    if not wait(2.0): continue
                     wymagany_rzut = True
 
                 elif spadla:
                     set_status("SPADŁA - ZWIJAM")
+                    # Ryba spadła, ale może wziąć nowa. Na razie nie resetujemy flagi ryby,
+                    # zrobimy to dopiero jak skończymy zwijać i nic nie weźmie.
 
+                    # Szybkie zwijanie pustego
                     pyautogui.mouseDown(button='left')
                     pyautogui.keyDown('shift')
                     pyautogui.mouseUp(button='right')
@@ -500,23 +495,40 @@ def bot_logic():
 
                     while time.time() - start_zwijania < 45:
                         if not running: break
+
+                        # SPRAWDZAMY CZY NOWA RYBA WZIĘŁA
                         if szukaj_wzorca(template_ryba, ACTIVE_CONFIG['ryba_reg'])[0]:
                             set_status("PONOWNY ATAK!")
-                            ryba_znaleziona = True
+                            # Ważne: Zostawiamy ryba_znaleziona = True
                             nowe_branie = True
                             break
+
                         if template_zero is not None and \
                                 szukaj_wzorca(template_zero, ACTIVE_CONFIG['zero_reg'], prog=0.75)[0]:
                             break
-                        if not wait(random.uniform(0.04, 0.06)): break
 
-                    if nowe_branie: continue
+                        if not wait(0.05): break
 
+                    # Jeśli user zatrzymał w trakcie zwijania
+                    if not running:
+                        resetuj_klawisze()
+                        continue
+
+                    if nowe_branie:
+                        # Wracamy na początek pętli WHILE TRUE.
+                        # Ponieważ ryba_znaleziona jest TRUE, pominiemy rzut/jig i wejdziemy prosto w HOL.
+                        resetuj_klawisze()  # Dla bezpieczeństwa, hol sam sobie wciśnie co trzeba
+                        continue
+
+                        # Jeśli dotarliśmy tutaj, to ryba spadła i nic nowego nie wzięło
+                    ryba_znaleziona = False
                     resetuj_klawisze()
-                    if not wait(random.uniform(1.4, 1.6)): continue
+                    if not wait(1.5): continue
                     wymagany_rzut = True
+
             else:
-                if not wait(random.uniform(0.04, 0.06)): continue
+                # Idle loop gdy nie ma ryby i czekamy na ticki
+                if not wait(0.05): continue
 
     except Exception as e:
         print(f"BŁĄD: {e}")
@@ -529,33 +541,26 @@ def press_4_after_5_minutes_task():
             if kill_signal: return
             time.sleep(0.5)
 
+        # Prosty licznik, ale respektujący pauzę
         wait_duration = 300
         time_waited = 0
         last_time = time.time()
 
         while time_waited < wait_duration:
             if kill_signal: return
-
             if running:
                 current_time = time.time()
                 time_waited += current_time - last_time
                 last_time = current_time
             else:
                 last_time = time.time()
-                while not running:
-                    if kill_signal: return
-                    time.sleep(0.5)
-                last_time = time.time()
-
+                time.sleep(0.5)
             time.sleep(0.1)
 
-        for _ in range(5):
-            if kill_signal: return
-            while not running:
-                if kill_signal: return
-                time.sleep(0.5)
+        # Akcja po 5 min
+        if running:
             pyautogui.press('4')
-            time.sleep(random.uniform(0.2, 0.5))
+            time.sleep(0.2)
 
 
 # ==========================================
@@ -570,7 +575,6 @@ def main_gui():
     root.attributes('-topmost', True)
 
     bg_color = '#1a1b26'
-
     global last_tick
     last_tick = time.time()
 
@@ -588,12 +592,11 @@ def main_gui():
     right_frame = tk.Frame(main_frame, bg=bg_color)
     right_frame.pack(side='right', fill='both', padx=(20, 0))
     tk.Label(right_frame, text="STEROWANIE", font=("Segoe UI", 9, "bold"), bg=bg_color, fg='#565f89').pack(anchor='e')
-    tk.Label(right_frame, text=f"Start/Reset: {KLAWISZ_START}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
+    tk.Label(right_frame, text=f"Start/Pauza: {KLAWISZ_START}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
     tk.Label(right_frame, text=f"Stop: {KLAWISZ_KONIEC}", bg=bg_color, fg='#c0caf5').pack(anchor='e')
 
     def update_gui():
         global last_tick, SESSION_TIME_SECONDS, TOTAL_TIME_SECONDS
-
         current_tick = time.time()
         if running:
             delta = current_tick - last_tick
@@ -604,13 +607,11 @@ def main_gui():
         try:
             sesja_str = f"Sesja: {SESSION_COUNTER} ({format_time(SESSION_TIME_SECONDS)})"
             razem_str = f"Razem: {TOTAL_COUNTER} ({format_time(TOTAL_TIME_SECONDS)})"
-
             lbl_counter.config(text=f"{sesja_str}\n{razem_str}")
             lbl_status.config(text=BOT_STATUS)
-
             st = BOT_STATUS.upper()
             col = '#7dcfff'
-            if "RESET" in st:
+            if "PAUZA" in st:
                 col = '#f7768e'
             elif "HOL" in st:
                 col = '#bb9af7'
@@ -621,7 +622,6 @@ def main_gui():
             lbl_status.config(fg=col)
         except:
             pass
-
         root.after(200, update_gui)
 
     update_gui()

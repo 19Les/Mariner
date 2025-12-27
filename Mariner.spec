@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
+
+datas = [('ind2.png', '.'), ('space2.png', '.'), ('gotowy.png', '.'), ('dno.png', '.'), ('indicator.png', '.'), ('space.png', '.'), ('ready.png', '.'), ('movement.png', '.')]
+binaries = []
+hiddenimports = ['win32timezone']
+tmp_ret = collect_all('tkinter')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
     ['bot.py'],
     pathex=[],
-    binaries=[],
-    datas=[('ind2.png', '.'), ('space2.png', '.'), ('gotowy.png', '.'), ('dno.png', '.'), ('indicator.png', '.'), ('space.png', '.'), ('ready.png', '.'), ('movement.png', '.')],
-    hiddenimports=[],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
