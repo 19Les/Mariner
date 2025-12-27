@@ -375,7 +375,7 @@ def bot_logic():
                     else:
                         wymagany_rzut = False
                         pyautogui.mouseDown(button='left')
-                        if not wait(0.5):
+                        if not wait(0.05):
                             pyautogui.mouseUp(button='left');
                             continue
                         pyautogui.mouseUp(button='left')
